@@ -1,1 +1,1 @@
-# CIVIL459-PedestrianIntensionDetection
+# CIVIL459-Pedestrian Intension Detection
