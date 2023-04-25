@@ -104,8 +104,9 @@ class DecoderRNN_IMBS(nn.Module):
             batch_first=True,       #  (batch, time_step, input_size)
         )
         # behavior  decoder
+        # change input_size from 4 to 3 (since we delete c/nc behavior)
         self.RNN_2 = nn.LSTM(
-            input_size=4,
+            input_size=3,
             hidden_size=self.h_RNN_2,        
             num_layers=h_RNN_layers,       
             batch_first=True,       #  (batch, time_step, input_size)
@@ -113,7 +114,8 @@ class DecoderRNN_IMBS(nn.Module):
         self.fc0 = nn.Linear(self.h_RNN_0, self.h_FC0_dim)
         self.fc1 = nn.Linear(self.h_RNN_1 + self.h_FC0_dim, self.h_FC1_dim)
         self.dropout = nn.Dropout(p=drop_p)
-        self.fc2 = nn.Linear(self.h_FC1_dim + self.h_RNN_2 + 6, self.h_FC2_dim)
+        # change +6 to +5 since we delete one element(motion description) in scene descriptions
+        self.fc2 = nn.Linear(self.h_FC1_dim + self.h_RNN_2 + 5, self.h_FC2_dim)
         self.fc3 = nn.Linear(self.h_FC2_dim, 1)
         self.act = nn.Sigmoid()
 
