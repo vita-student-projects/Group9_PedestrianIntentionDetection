@@ -72,13 +72,16 @@ def train_epoch(loader, model, criterion, optimizer, device):
     epoch_loss = 0.0
     for i, inputs in enumerate(loader):
         # compute output and loss
-        targets = inputs['label'].to(device, non_blocking=True)
+        # change targets from transition/no-transition to c/nc
+        targets = inputs['behavior']['cross'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
         bboxes_ped = inputs['bbox_ped']
         seq_len = inputs['seq_length']
-        behavior_list = reshape_anns(inputs['behavior'], device)
+        # delete c/nc label in training
+        behavior_list = reshape_anns(inputs['behavior'].pop('cross'), device)
         behavior = batch_first(behavior_list).to(device, non_blocking=True)
-        scene = inputs['attributes'].to(device, non_blocking=True)
+        # delete pedestrian motion detecttion (lateral/longitudinal) in training
+        scene = inputs['attributes'].pop('motion_direction').to(device, non_blocking=True)
         bbox_ped_list = reshape_bbox(bboxes_ped, device)
         pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
         outputs_CNN = encoder_CNN(images, seq_len)
