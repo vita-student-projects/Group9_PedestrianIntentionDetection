@@ -64,6 +64,8 @@ def get_pedb_info_jaad(annotations, vid):
         frames = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['frames'])
         bbox = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['bbox'])
         occlusion = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['occlusion'])
+
+        # behavioural data
         action = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['behavior']['action'])
         cross = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['behavior']['cross'])
         nod = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['behavior']['nod'])
@@ -90,6 +92,7 @@ def get_pedb_info_jaad(annotations, vid):
                 pedb_info[idx]['traffic_light'].append(dataset[vid]['traffic_annotations'][frames[i]]['traffic_light'])
 
         # attribute vector
+        # scene description
         atr_vec = [0, 0, 0, 0, 0, 0]
         atr_vec[0] = dataset[vid]['ped_annotations'][idx]['attributes']['num_lanes']
         atr_vec[1] = dataset[vid]['ped_annotations'][idx]['attributes']['intersection']
