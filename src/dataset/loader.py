@@ -24,8 +24,8 @@ def define_path(use_jaad=True, use_pie=True, use_titan=True):
                       'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
                                 'split': '/work/vita/datasets/TITAN/splits/'}
                       }
-    # change from JAAD images: '/work/vita/datasets/JAAD/images/' to 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images'
-    all_image_dir = {'JAAD': 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images',
+    # change from JAAD images: '/work/vita/datasets/JAAD/images/' to 'DATA/images/JAAD'
+    all_image_dir = {'JAAD': 'DATA/images/JAAD',
                      'PIE': '/work/vita/datasets/PIE/images/',
                      'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
                      }
