@@ -321,6 +321,7 @@ class JaadTransDataset:
                 old_id = None
                 d1 = min(i, 5)
                 d2 = min(len(frames) - i - 1, 5)
+                # use all data, don't care go or stop
                 if mode == "GO":
                     if next_transition[i] == 0 and action[i] == 1 and action[i - d1] == 0 and action[i + d2] == 1:
                         j += 1

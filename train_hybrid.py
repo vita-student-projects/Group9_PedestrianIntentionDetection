@@ -243,6 +243,7 @@ def main():
     print('total time: {:.2f}'.format(total_time))
 
 
-def main():
-    if __name__ == '__main__':
-        main()
+
+if __name__ == '__main__':
+    print('start')
+    main()
