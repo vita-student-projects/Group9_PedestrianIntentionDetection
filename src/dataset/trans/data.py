@@ -335,6 +335,7 @@ def extract_pred_sequence(trans, non_trans=None, pred_ahead=0, balancing_ratio=N
             if abs(bbox[i][2] - bbox[i][0]) < bbox_min[0]:
                 continue
             key = idx + f"_f{frames[i]}"
+            # number of seconds between current frame and the transition frame
             TTE = (frames[-1] - frames[i]) / (step * fps)
             if TTE > pred_ahead / fps:
                 trans_label = 0

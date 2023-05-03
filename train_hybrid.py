@@ -60,7 +60,6 @@ def get_args():
 
 
 def train_epoch(loader, model, criterion, optimizer, device):
-
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
     # freeze CNN-encoder during training
@@ -243,6 +242,6 @@ def main():
     print('total time: {:.2f}'.format(total_time))
 
 
-def main():
-    if __name__ == '__main__':
-        main()
+
+if __name__ == '__main__':
+    main()
