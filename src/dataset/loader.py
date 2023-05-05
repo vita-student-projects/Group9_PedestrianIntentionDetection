@@ -458,9 +458,9 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         sample_id = self.samples[index]['sample_id']
         frames = self.samples[index]['frames']
-        attributes = self.samples[index]['attributes']
+        attributes = torch.tensor(self.samples[index]['attributes'])
         action = self.samples[index]['action']
-        behavior = self.samples[index]['behavior']
+        behavior = torch.tensor(self.samples[index]['behavior'], dtype=torch.float32)
         bbox = copy.deepcopy(self.samples[index]['bbox'])
         label = self.samples[index]['label']
         bbox_new = []
@@ -495,4 +495,4 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
         return sample
 
     def __len__(self):
-        return len(self.samples.keys())
+        return len(self.samples)

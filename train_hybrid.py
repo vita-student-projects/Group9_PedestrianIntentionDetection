@@ -60,6 +60,7 @@ def get_args():
 
 
 def train_epoch(loader, model, criterion, optimizer, device):
+
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
     # freeze CNN-encoder during training
@@ -71,16 +72,12 @@ def train_epoch(loader, model, criterion, optimizer, device):
     epoch_loss = 0.0
     for i, inputs in enumerate(loader):
         # compute output and loss
-        # change targets from transition/no-transition to c/nc
-        targets = inputs['behavior']['cross'].to(device, non_blocking=True)
+        targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
         bboxes_ped = inputs['bbox_ped']
         seq_len = inputs['seq_length']
-        # delete c/nc label in training
-        behavior_list = reshape_anns(inputs['behavior'].pop('cross'), device)
-        behavior = batch_first(behavior_list).to(device, non_blocking=True)
-        # delete pedestrian motion detecttion (lateral/longitudinal) in training
-        scene = inputs['attributes'].pop('motion_direction').to(device, non_blocking=True)
+        behavior = inputs['behavior'].to(device, non_blocking=True)
+        scene = inputs['attributes'].to(device, non_blocking=True)
         bbox_ped_list = reshape_bbox(bboxes_ped, device)
         pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
         outputs_CNN = encoder_CNN(images, seq_len)
@@ -96,7 +93,7 @@ def train_epoch(loader, model, criterion, optimizer, device):
     return epoch_loss / len(loader)
 
 
-
+@torch.no_grad()
 def val_epoch(loader, model, criterion, device):
     # swith to evaluate mode
     encoder_CNN = model['encoder']
@@ -111,36 +108,32 @@ def val_epoch(loader, model, criterion, device):
     n_tn = 0.0
     y_true = []
     y_pred = []
-    with torch.no_grad():
-        for i, inputs in enumerate(loader):
-            # compute output and loss
-            # change targets from transition/no-transition to c/nc
-            targets = inputs['behavior']['cross'].to(device, non_blocking=True)
-            images = inputs['image'].to(device, non_blocking=True)
-            bboxes_ped = inputs['bbox_ped']
-            seq_len = inputs['seq_length']
-            # delete c/nc label in training
-            behavior_list = reshape_anns(inputs['behavior'].pop('cross'), device)
-            behavior = batch_first(behavior_list).to(device, non_blocking=True)
-            # delete pedestrian motion detecttion (lateral/longitudinal) in training
-            scene = inputs['attributes'].pop('motion_direction').to(device, non_blocking=True)
-            bbox_ped_list = reshape_bbox(bboxes_ped, device)
-            pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
-            outputs_CNN = encoder_CNN(images, seq_len)
-            outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
-            loss = criterion(outputs_RNN, targets.view(-1, 1))
-            epoch_loss += float(loss.item())
-            for j in range(targets.size()[0]):
-                y_true.append(int(targets[j].item()))
-                y_pred.append(float(outputs_RNN[j].item()))
-                if targets[j] > 0.5:
-                    n_p += 1
-                    if outputs_RNN[j] > 0.5:
-                        n_tp += 1
-                else:
-                    n_n += 1
-                    if outputs_RNN[j] < 0.5:
-                        n_tn += 1
+
+    for i, inputs in enumerate(loader):
+        # compute output and loss
+        targets = inputs['label'].to(device, non_blocking=True)
+        images = inputs['image'].to(device, non_blocking=True)
+        bboxes_ped = inputs['bbox_ped']
+        seq_len = inputs['seq_length']
+        behavior = inputs['behavior'].to(device, non_blocking=True)
+        scene = inputs['attributes'].to(device, non_blocking=True)
+        bbox_ped_list = reshape_bbox(bboxes_ped, device)
+        pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
+        outputs_CNN = encoder_CNN(images, seq_len)
+        outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
+        loss = criterion(outputs_RNN, targets.view(-1, 1))
+        epoch_loss += float(loss.item())
+        for j in range(targets.size()[0]):
+            y_true.append(int(targets[j].item()))
+            y_pred.append(float(outputs_RNN[j].item()))
+            if targets[j] > 0.5:
+                n_p += 1
+                if outputs_RNN[j] > 0.5:
+                    n_tp += 1
+            else:
+                n_n += 1
+                if outputs_RNN[j] < 0.5:
+                    n_tn += 1
 
     AP_P = average_precision_score(y_true, y_pred)
     FP = n_n - n_tn

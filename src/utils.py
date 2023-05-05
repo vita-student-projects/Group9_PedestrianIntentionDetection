@@ -120,15 +120,7 @@ def bbox_to_pv(bbox_list):
 
 def reshape_anns(anns_list, device):
     new_anns_list = []
-    dim = len(anns_list[0])
-    for j in range(len(anns_list)):
-        raw_anns = anns_list[j]
-        B = torch.stack(raw_anns).type(torch.FloatTensor).to(device, non_blocking=True)
-        anns = []
-        for i in range(B.shape[1]):
-           anns.append(B[:,i].view(1,dim))
-        new_anns_list.append(anns)
-    
-    return new_anns_list
-
+    for i, ann in enumerate(anns_list):
+        anns_list[i] = ann.to(device, non_blocking=True)
+    return anns_list
 
