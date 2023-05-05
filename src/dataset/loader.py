@@ -11,6 +11,15 @@ from typing import List
 
 LOG = logging.getLogger(__name__)
 
+def flip_image_and_bbox(img, anns):
+    img = img.transpose(PIL.Image.FLIP_LEFT_RIGHT)
+    w, _ = img.size
+    x_max = w - anns['bbox'][0]
+    x_min = w - anns['bbox'][2]
+    anns['bbox'][0] = x_min
+    anns['bbox'][2] = x_max
+    return img
+
 
 def define_path(use_jaad=True, use_pie=True, use_titan=True):
     """
@@ -432,3 +441,61 @@ class PaddedSequenceDataset(torch.utils.data.Dataset):
         return len(self.samples.keys())
         
 
+class IntentionSequenceDataset(torch.utils.data.Dataset):
+    """
+    Basic dataloader for loading sequence/history samples
+    """
+
+    def __init__(self, samples, image_dir, preprocess=None, hflip_p=0.0):
+        """
+        :params: samples: pedestrian trajectory samples(dict)
+                image_dir: root dir for images extracted from video clips
+                preprocess: optional preprocessing on image tensors and annotations
+        """
+        self.samples = samples
+        self.image_dir = image_dir
+        self.preprocess = preprocess
+        self.hflip_p = hflip_p
+        self._to_tensor = torchvision.transforms.ToTensor()
+
+    def __getitem__(self, index):
+        sample_id = self.samples[index]['sample_id']
+        frames = self.samples[index]['frames']
+        attributes = torch.tensor(self.samples[index]['attributes'])
+        action = self.samples[index]['action']
+        behavior = torch.tensor(self.samples[index]['behavior'], dtype=torch.float32)
+        bbox = copy.deepcopy(self.samples[index]['bbox'])
+        label = self.samples[index]['label']
+        bbox_new = []
+        bbox_ped_new = []
+        image_path = None
+        # image paths
+        img_tensors = []
+        hflip = True if float(torch.rand(1).item()) < self.hflip_p else False
+        for i in range(len(frames)):
+            anns = {'bbox': bbox[i]}
+            vid = self.samples[index]['video_number']
+            image_path = os.path.join(self.image_dir['JAAD'], vid, '{:05d}.png'.format(frames[i]))
+            with open(image_path, 'rb') as f:
+                img = PIL.Image.open(f).convert('RGB')
+            if hflip:
+                img = flip_image_and_bbox(img, anns)
+            anns['bbox_ped'] =  copy.deepcopy(anns['bbox'])
+            if self.preprocess is not None:
+                img, anns = self.preprocess(img, anns)
+            img_tensors.append(self._to_tensor(img))
+            bbox_new.append(anns['bbox'])
+            bbox_ped_new.append(anns['bbox_ped'])
+    
+        img_tensors = torch.stack(img_tensors)
+        seq_len = img_tensors.size(0)
+        # TODO: why not long?
+        label = torch.tensor(label, dtype=torch.float32)
+
+        sample = {'image': img_tensors, 'bbox': bbox_ped_new, 'bbox_ped': bbox_ped_new, 
+                   'seq_length': seq_len, 'id':sample_id, 'label': label, 'attributes': attributes, 'action': action, 'behavior': behavior}
+
+        return sample
+
+    def __len__(self):
+        return len(self.samples)

@@ -11,15 +11,16 @@ import math
 LOG = logging.getLogger(__name__)
 
 def define_path(use_jaad=True, use_pie=True, use_titan=True):
-    all_anns_paths = {'JAAD': {'anns': 'TransNet/DATA/JAAD_DATA.pkl',
-                               'split': '/work/vita/datasets/JAAD/split_ids/'},
-                      'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
-                      'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
-                                'split': '/work/vita/datasets/TITAN/splits/'}
+    all_anns_paths = {'JAAD': {'anns': 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl',
+                               'split': 'DATA/annotations/JAAD/splits/'},
+                      # TODO: check split
+                      #'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
+                      #'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
+                      #          'split': '/work/vita/datasets/TITAN/splits/'}
                       }
-    all_image_dir = {'JAAD': '/work/vita/datasets/JAAD/images/',
-                     'PIE': '/work/vita/datasets/PIE/images/',
-                     'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
+    all_image_dir = {'JAAD': 'DATA/images/JAAD/',
+                     #'PIE': '/work/vita/datasets/PIE/images/',
+                     #'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
                      }
     anns_paths = {}
     image_dir = {}
@@ -51,7 +52,6 @@ class ImageList(torch.utils.data.Dataset):
             image = PIL.Image.open(f).convert('RGB')
         if self.preprocess is not None:
             image = self.preprocess(image)
-
         return image
 
     def __len__(self):
@@ -73,6 +73,7 @@ class FrameDataset(torch.utils.data.Dataset):
         source = self.samples[idx]["source"]
         anns = {'bbox': bbox, 'source': source}
         TTE = self.samples[idx]["TTE"]
+        # TODO: change for our labels
         if 'trans_label' in list(self.samples[idx].keys()):
             label = self.samples[idx]['trans_label']
         else:
@@ -270,4 +271,3 @@ class PaddedSequenceDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.samples.keys())
         
-

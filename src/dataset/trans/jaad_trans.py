@@ -328,11 +328,13 @@ class JaadTransDataset:
                         new_id = "{:04d}".format(j) + "_" + self.name
                         key = "JG_" + new_id
                         old_id = idx
-                        ae = np.array(action[i::-step])
-                        ce = np.array(np.nonzero(ae == 1))
-                        d_pre = ce[0][1] - 1 if ce.size > 1 else len(ae) - 1
+                        ae = np.array(action[i::-step]) # reversed actions up to the current frame
+                        ce = np.array(np.nonzero(ae == 1)) # is walking
+                        # distance to the previous frame (sparsified) when the pedestrian starts walking
+                        d_pre = ce[0][1] - 1 if ce.size > 1 else len(ae) - 1 #
                         ap = np.array(action[i::step])
                         cp = np.array(np.nonzero(ap == 0))
+                        # distance to the next frame (sparsified) when the pedestrian stops walking
                         d_pos = cp[0][0] if cp.size > 0 else len(ap)
                 if mode == "STOP":
                     if next_transition[i] == 0 and action[i] == 0 and action[i - d1] == 1 and action[i + d2] == 0:
@@ -356,18 +358,25 @@ class JaadTransDataset:
                     samples[key]["source"] = "JAAD"
                     samples[key]["old_id"] = old_id
                     samples[key]['video_number'] = vid_id
+                    # take every step-th frame from 0 to i
                     samples[key]['frame'] = frames[i:t:-step]
                     samples[key]['frame'].reverse()
+
                     samples[key]['bbox'] = bbox[i:t:-step]
                     samples[key]['bbox'].reverse()
+
                     samples[key]['action'] = action[i:t:-step]
                     samples[key]['action'].reverse()
+
                     samples[key]['cross'] = cross[i:t:-step]
                     samples[key]['cross'].reverse()
+
                     samples[key]['behavior'] = behavior[i:t:-step]
                     samples[key]['behavior'].reverse()
+
                     samples[key]['traffic_light'] = traffic_light[i:t:-step]
                     samples[key]['traffic_light'].reverse()
+
                     samples[key]['attributes'] = attributes
                     samples[key]['pre_state'] = d_pre
                     samples[key]['post_state'] = d_pos

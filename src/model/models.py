@@ -10,22 +10,23 @@ from ..utils import *
 
 class Res18CropEncoder(nn.Module):
     def __init__(self, resnet, CNN_embed_dim=256):
-        super(Res18CropEncoder, self).__init__()
+        super().__init__()
         
         self.resnet = resnet
         self.fc = nn.Linear(512, CNN_embed_dim)
-        
+
+    @torch.no_grad()    
     def forward(self, x_5d, x_lengths):
         x_seq = []
-        for i in range(x_5d.size(0)):
+        batch_size = x_5d.size(0)
+        for i in range(batch_size):
             cnn_embed_seq = []
             for t in range(x_lengths[i]):
-                with torch.no_grad():
-                    img = x_5d[i, t, :, :, :]
-                    x = self.resnet(torch.unsqueeze(img,dim=0))  # ResNet
-                    x = self.fc(x)
-                    x = F.relu(x)
-                    x = x.view(x.size(0), -1) # flatten output of conv
+                img = x_5d[i, t, :, :, :]
+                x = self.resnet(torch.unsqueeze(img,dim=0))  # ResNet
+                x = self.fc(x)
+                x = F.relu(x)
+                x = x.view(x.size(0), -1) # flatten output of conv
                 cnn_embed_seq.append(x)                    
             # swap time and sample dim such that (sample dim=1, time dim, CNN latent dim)
             embed_seq = torch.stack(cnn_embed_seq, dim=0).transpose_(0, 1)
@@ -35,8 +36,6 @@ class Res18CropEncoder(nn.Module):
             x_seq.append(embed_seq)
         
         x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
-        
-        
         return x_padded
         
         
@@ -47,22 +46,22 @@ class Res18RoIEncoder(nn.Module):
     Output: T_max x 1 x CNN_embed_dim feature vector
     """
     def __init__(self, resnet, CNN_embed_dim=256):
-        super(Res18RoIEncoder, self).__init__()
+        super().__init__()
         
         self.resnet = resnet
         self.fc = nn.Linear(1024, CNN_embed_dim)
         
+    @torch.no_grad()
     def forward(self, x_5d, x_lengths):
         x_seq = []
         for i in range(x_5d.size(0)):
             cnn_embed_seq = []
             for t in range(x_lengths[i]):
-                with torch.no_grad():
-                    img = x_5d[i, t, :, :, :]
-                    x = self.resnet(torch.unsqueeze(img,dim=0))  # ResNet
-                    x = self.fc(x)
-                    x = F.relu(x)
-                    x = x.view(x.size(0), -1) # flatten output of conv
+                img = x_5d[i, t, :, :, :]
+                x = self.resnet(torch.unsqueeze(img,dim=0))  # ResNet
+                x = self.fc(x)
+                x = F.relu(x)
+                x = x.view(x.size(0), -1) # flatten output of conv
                 cnn_embed_seq.append(x)                    
             # swap time and sample dim such that (sample dim=1, time dim, CNN latent dim)
             embed_seq = torch.stack(cnn_embed_seq, dim=0).transpose_(0, 1)
@@ -80,7 +79,7 @@ class Res18RoIEncoder(nn.Module):
 class DecoderRNN_IMBS(nn.Module):
     def __init__(self, CNN_embeded_size=256, h_RNN_layers=1, h_RNN_0=256, h_RNN_1=64,
                  h_RNN_2=16, h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2):
-        super(DecoderRNN_IMBS, self).__init__()
+        super().__init__()
         self.CNN_embeded_size= CNN_embeded_size
         self.h_RNN_0 = h_RNN_0
         self.h_RNN_1 = h_RNN_1
@@ -104,9 +103,9 @@ class DecoderRNN_IMBS(nn.Module):
             batch_first=True,       #  (batch, time_step, input_size)
         )
         # behavior  decoder
-        # change input_size from 4 to 3 (since we delete c/nc behavior)
+        # keep size at 4 (since we delete c/nc behaviorm but add action)
         self.RNN_2 = nn.LSTM(
-            input_size=3,
+            input_size=4,
             hidden_size=self.h_RNN_2,        
             num_layers=h_RNN_layers,       
             batch_first=True,       #  (batch, time_step, input_size)
@@ -119,8 +118,10 @@ class DecoderRNN_IMBS(nn.Module):
         self.fc3 = nn.Linear(self.h_FC2_dim, 1)
         self.act = nn.Sigmoid()
 
-    def forward(self, xc_3d, xp_3d, xb_3d, xs_2d, x_lengths):        
+    def forward(self, xc_3d, xp_3d, xb_3d, xs_2d, x_lengths):  
+        print("entered decoder forward", flush=True)      
         # use input of descending length
+        print("xc_3d shape", xc_3d.shape, "xp_3d shape", xp_3d.shape, 'xb_3d shape', xb_3d.shape, flush=True)
         packed_x0_RNN = torch.nn.utils.rnn.pack_padded_sequence(xc_3d, x_lengths, 
                                                                 batch_first=True, enforce_sorted=False)
         packed_x1_RNN = torch.nn.utils.rnn.pack_padded_sequence(xp_3d, x_lengths, 
@@ -130,10 +131,13 @@ class DecoderRNN_IMBS(nn.Module):
         self.RNN_0.flatten_parameters()
         self.RNN_1.flatten_parameters()
         self.RNN_2.flatten_parameters()
-        
+
         packed_RNN_out_0, _ = self.RNN_0(packed_x0_RNN, None)
+        print("RNN0 done", flush=True)
         packed_RNN_out_1, _ = self.RNN_1(packed_x1_RNN, None)
+        print("RNN1 done", flush=True)
         packed_RNN_out_2, _ = self.RNN_2(packed_x2_RNN, None)
+        print("RNN2 done", flush=True)
         """ None represents zero initial hidden state. RNN_out has shape=(batch, time_step, output_size) """
         RNN_out_0, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_RNN_out_0, batch_first=True)
         RNN_out_0 = RNN_out_0.contiguous()
@@ -142,7 +146,7 @@ class DecoderRNN_IMBS(nn.Module):
         RNN_out_2, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_RNN_out_2, batch_first=True)
         RNN_out_2 = RNN_out_2.contiguous()
       
-  
+        print(f'passed RNN encoding', flush=True)
     
         # choose RNN_out at the last time step
         output_0 = RNN_out_0[:, -1, :]
@@ -157,12 +161,14 @@ class DecoderRNN_IMBS(nn.Module):
         x1 = self.fc1(x_ipv)
         x1 = F.relu(x1)
         x1 = self.dropout(x1)
+        print('passed fc1', flush=True)
         x_ipvb = torch.cat((x1, output_2, xs_2d), dim=1)
         x = self.fc2(x_ipvb)
         x = F.relu(x)
+        print('passed fc2', flush=True)
         x = self.fc3(x)
         x = self.act(x)
-
+        print('passed fc3', flush=True)
         return x
 
 def build_encoder_res18(args):
@@ -171,7 +177,7 @@ def build_encoder_res18(args):
 
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if args.encoder_type is 'CC': #use crop-context encoder
+    if args.encoder_type == 'CC': #use crop-context encoder
         if args.encoder_pretrained:
              res18 = ResnetBlocks(torchvision.models.resnet18(pretrained=False))
              res_backbone = res18.build_backbone(use_pool=True, use_last_block=True, pifpaf_bn=False)
@@ -187,7 +193,7 @@ def build_encoder_res18(args):
             # remove last fc
             res18_cpu.fc = torch.nn.Identity()
             res18_gpu = res18_cpu.to(device)
-        encoder_res18 = Res18CropEncoder(resnet=res18_gpu).to(device)
+        encoder_res18 = Res18CropEncoder(resnet=res18_gpu)
     else:
          if args.encoder_pretrained:
              res18 = ResnetBlocks(torchvision.models.resnet18(pretrained=False))
@@ -208,8 +214,8 @@ def build_encoder_res18(args):
          res18_roi_gpu.dropout = torch.nn.Identity()
          res18_roi_gpu.act = torch.nn.Identity()
          # encoder
-         encoder_res18 = Res18RoIEncoder(encoder=res18_roi_gpu).to(device)
-
+         encoder_res18 = Res18RoIEncoder(encoder=res18_roi_gpu)
+    encoder_res18.to(device)
     return encoder_res18
 
 
