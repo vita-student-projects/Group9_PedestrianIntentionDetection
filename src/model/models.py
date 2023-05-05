@@ -14,18 +14,19 @@ class Res18CropEncoder(nn.Module):
         
         self.resnet = resnet
         self.fc = nn.Linear(512, CNN_embed_dim)
-        
+
+    @torch.no_grad    
     def forward(self, x_5d, x_lengths):
         x_seq = []
-        for i in range(x_5d.size(0)):
+        batch_size = x_5d.size(0)
+        for i in range(batch_size):
             cnn_embed_seq = []
             for t in range(x_lengths[i]):
-                with torch.no_grad():
-                    img = x_5d[i, t, :, :, :]
-                    x = self.resnet(torch.unsqueeze(img,dim=0))  # ResNet
-                    x = self.fc(x)
-                    x = F.relu(x)
-                    x = x.view(x.size(0), -1) # flatten output of conv
+                img = x_5d[i, t, :, :, :]
+                x = self.resnet(torch.unsqueeze(img,dim=0))  # ResNet
+                x = self.fc(x)
+                x = F.relu(x)
+                x = x.view(x.size(0), -1) # flatten output of conv
                 cnn_embed_seq.append(x)                    
             # swap time and sample dim such that (sample dim=1, time dim, CNN latent dim)
             embed_seq = torch.stack(cnn_embed_seq, dim=0).transpose_(0, 1)

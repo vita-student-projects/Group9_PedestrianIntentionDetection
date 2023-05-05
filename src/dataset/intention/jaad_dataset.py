@@ -2,9 +2,14 @@ import os
 import numpy as np
 import pickle
 import copy
+import random
 from src.dataset.trans.jaad_trans import get_split_vids, get_pedb_ids_jaad
+from collections import Counter
 
 JAAD_BASE_FPS = 30
+MAX_FRAMES = 5
+PREDICTION_FRAMES = 5
+SEED = 42
 
 def get_pedb_info_jaad(annotations, vid):
     """
@@ -80,11 +85,15 @@ def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
     """
     all_cross = 0
     total_samples = 0
+    length_filtered = 0
     pids = list(dataset.keys())
     for idx in pids:
         frames = dataset[idx]['frames']
         dataset[idx]['labels'] = []
         crossing_share = 0
+        if len(frames) <= prediction_frames:
+            length_filtered += 1
+            continue
         for j in range(len(frames) - prediction_frames):
             dataset[idx]['labels'].append(dataset[idx]['cross'][j + prediction_frames])
             total_samples += 1
@@ -102,11 +111,10 @@ def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
         print("JAAD:")
         print(f'Total number of crosses: {all_cross}')
         print(f'Total number of non-crosses: {total_samples - all_cross}')
+        print(f'Filtered samples: {length_filtered}')
 
-    return None
 
-
-def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", subset='default', fps=JAAD_BASE_FPS, verbose=False) -> dict:
+def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", subset='default', fps=JAAD_BASE_FPS,  prediction_frames=PREDICTION_FRAMES, verbose=False) -> dict:
     """
     Build pedestrian dataset from jaad annotations
     """
@@ -121,11 +129,41 @@ def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", su
             if len(pedb_info[idx]['action']) > 0:
                 pedb_dataset[idx] = {}
                 pedb_dataset[idx]['video_number'] = vid
-                for attribute in ['frames', 'bbox', 'action', 'occlusion', 'cross', 'behavior', 'attributes', 'traffic_light']:
+                for attribute in ['frames', 'bbox', 'action', 'occlusion', 'cross', 'behavior', 'traffic_light']:
                     pedb_dataset[idx][attribute] = pedb_info[idx][attribute][::fps_step]
-    add_cross_label_jaad(pedb_dataset, verbose)
-
+                pedb_dataset[idx]['attributes'] = pedb_info[idx]['attributes']
+    add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, verbose=verbose)
     return pedb_dataset
+
+def subsample_and_balance(intention_dataset, max_frames=MAX_FRAMES, seed=SEED):
+    random.seed(seed)
+    new_samples = []
+    all_labels = []
+    for ped_id in intention_dataset:
+        n_frames = len(intention_dataset[ped_id]['frames'])
+        for i in range(n_frames - max_frames):
+            new_sample = {}
+            new_id = f"{ped_id}_{intention_dataset[ped_id]['video_number']}_{i}"
+            new_sample['sample_id'] = new_id
+            for attribute in ['frames', 'bbox', 'action', 'occlusion', 'behavior', 'traffic_light']:
+                new_sample[attribute] = intention_dataset[ped_id][attribute][i:i + max_frames]
+            new_sample['label'] = intention_dataset[ped_id]['labels'][i + max_frames - 1]
+            for static_attribute in ['video_number', 'attributes']:
+                new_sample[static_attribute] = intention_dataset[ped_id][static_attribute]
+            new_sample['ped_id'] = ped_id
+            new_samples.append(new_sample)
+            all_labels.append(new_sample['label'])
+
+    labels_stats = Counter(all_labels)
+    max_common = min(labels_stats[0], labels_stats[1])
+    crossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 1]
+    noncrossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 0]
+    kept_crossing_ids = random.sample(crossing_ids, max_common)
+    kept_noncrossing_ids = random.sample(noncrossing_ids, max_common)
+    kept_ids = kept_crossing_ids + kept_noncrossing_ids
+    balanced_new_samples = [new_samples[i] for i in kept_ids]
+    random.shuffle(balanced_new_samples)
+    return balanced_new_samples
 
 
 class JaadIntentionDataset:
