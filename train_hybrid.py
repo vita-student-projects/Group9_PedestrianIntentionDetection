@@ -10,53 +10,75 @@ from src.model.baselines import *
 from src.model.models import *
 from src.transform.preprocess import *
 from src.utils import *
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
+from src.dataset.intention.jaad_dataset import JaadIntentionDataset
+from dataclasses import dataclass
 
 
-
-def get_args():
-    parser = argparse.ArgumentParser(description='Train hybrid model')
-    parser.add_argument('--jaad', default=False, action='store_true',
-                        help='use JAAD dataset')
-    parser.add_argument('--pie', default=False, action='store_true',
-                        help='use PIE dataset')
-    parser.add_argument('--titan', default=False, action='store_true',
-                        help='use TITAN dataset')
-    parser.add_argument('--mode', default='GO', type=str,
-                        help='transition mode, GO or STOP')
-    parser.add_argument('--fps', default=5, type=int,
-                        metavar='FPS', help='sampling rate(fps)')
-    parser.add_argument('--max-frames', default=5, type=int,
-                        help='maximum number of frames in histroy sequence')
-    parser.add_argument('--pred', default=10, type=int,
-                        help='prediction length, predicting-ahead time')
-    parser.add_argument('--balancing-ratio', default=1.0, type=float,
-                        help='ratio of balanced instances(1/0)')
-    parser.add_argument('--seed', default=99, type=int,
-                        help='random seed for sampling')
-    parser.add_argument('--jitter-ratio', default=-1.0, type=float,
-                        help='jitter bbox for cropping')
-    parser.add_argument('--bbox-min', default=0, type=int,
-                        help='minimum bbox size')
+# def get_args():
+#     parser = argparse.ArgumentParser(description='Train hybrid model')
+#     parser.add_argument('--jaad', default=True, action='store_true',
+#                         help='use JAAD dataset')
+#     parser.add_argument('--pie', default=False, action='store_true',
+#                         help='use PIE dataset')
+#     parser.add_argument('--titan', default=False, action='store_true',
+#                         help='use TITAN dataset')
+#     parser.add_argument('--mode', default='GO', type=str,
+#                         help='transition mode, GO or STOP')
+#     parser.add_argument('--fps', default=5, type=int,
+#                         metavar='FPS', help='sampling rate(fps)')
+#     parser.add_argument('--max-frames', default=5, type=int,
+#                         help='maximum number of frames in histroy sequence')
+#     parser.add_argument('--pred', default=10, type=int,
+#                         help='prediction length, predicting-ahead time')
+#     parser.add_argument('--balancing-ratio', default=1.0, type=float,
+#                         help='ratio of balanced instances(1/0)')
+#     parser.add_argument('--seed', default=99, type=int,
+#                         help='random seed for sampling')
+#     parser.add_argument('--jitter-ratio', default=-1.0, type=float,
+#                         help='jitter bbox for cropping')
+#     parser.add_argument('--bbox-min', default=0, type=int,
+#                         help='minimum bbox size')
     
-    parser.add_argument('--encoder-type', default='CC', type=str,
-                        help='encoder for images, CC(crop-context) or RC(roi-context)')
-    parser.add_argument('--encoder-pretrained', default=False, 
-                        help='load pretrained encoder')
-    parser.add_argument('--encoder-path', default='', type=str,
-                        help='path to encoder checkpoint for loading the pretrained weights')
-    parser.add_argument('-lr', '--learning-rate', default=1e-4, type=float,
-                        metavar='LR', help='initial learning rate', dest='lr')
-    parser.add_argument('-b', '--batch-size', default=4, type=int,
-                        metavar='N', help='mini-batch size (default: 4)')
-    parser.add_argument('-e', '--epochs', default=10, type=int,
-                        help='number of epochs to train')
-    parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-5,
-                        help='Weight decay', dest='wd')
-    parser.add_argument('-o', '--output', default=None,
-                        help='output file')
-    args = parser.parse_args()
+#     parser.add_argument('--encoder-type', default='CC', type=str,
+#                         help='encoder for images, CC(crop-context) or RC(roi-context)')
+#     parser.add_argument('--encoder-pretrained', default=False, 
+#                         help='load pretrained encoder')
+#     parser.add_argument('--encoder-path', default='', type=str,
+#                         help='path to encoder checkpoint for loading the pretrained weights')
+#     parser.add_argument('-lr', '--learning-rate', default=1e-4, type=float,
+#                         metavar='LR', help='initial learning rate', dest='lr')
+#     parser.add_argument('-b', '--batch-size', default=4, type=int,
+#                         metavar='N', help='mini-batch size (default: 4)')
+#     parser.add_argument('-e', '--epochs', default=10, type=int,
+#                         help='number of epochs to train')
+#     parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-5,
+#                         help='Weight decay', dest='wd')
+#     parser.add_argument('-o', '--output', default=None,
+#                         help='output file')
+#     args = parser.parse_args()
 
-    return args
+#     return args
+
+@dataclass
+class Args:
+    jaad: bool = True
+    pie: bool = False
+    titan: bool = False
+    encoder_type: str = 'CC'
+    encoder_pretrained: bool = False
+    epochs: int = 1
+    lr: float = 1e-4 #0.001
+    wd: float = 1e-5 #0.0
+    batch_size: int = 4
+    max_frames: int = 5
+    output: str = None
+    jitter_ratio: float = 2
+    pred: int = 10
+    fps: int = 5
+    bbox_min: int = 0
+    seed: int = 99
+
 
 
 def train_epoch(loader, model, criterion, optimizer, device):
@@ -152,28 +174,37 @@ def val_epoch(loader, model, criterion, device):
 
 
 def main():
-    args = get_args()
+    # args = get_args()
+    args = Args()
+    
     # loading data
     print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
     print('------------------------------------------------------------------')
     anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
     anns_paths_val, image_dir_val = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
-    train_data = TransDataset(data_paths=anns_paths, image_set="train", verbose=False)
-    trans_tr = train_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None,
-                                                verbose=True)
-    non_trans_tr = train_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
-    print('-->>')
-    val_data = TransDataset(data_paths=anns_paths_val, image_set="test", verbose=False)
-    trans_val = val_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None, verbose=True)
-    non_trans_val = val_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
-    print('-->>')
-    sequences_train = extract_pred_sequence(trans=trans_tr, non_trans=non_trans_tr, pred_ahead=args.pred,
-                                            balancing_ratio=1.0, neg_in_trans=True,
-                                            bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
-    print('-->>')
-    sequences_val = extract_pred_sequence(trans=trans_val, non_trans=non_trans_val, pred_ahead=args.pred,
-                                          balancing_ratio=1.0, neg_in_trans=True,
-                                          bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
+    # train_data = TransDataset(data_paths=anns_paths, image_set="train", verbose=False)
+    # trans_tr = train_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None,
+    #                                             verbose=True)
+    # non_trans_tr = train_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
+    # print('-->>')
+    # val_data = TransDataset(data_paths=anns_paths_val, image_set="test", verbose=False)
+    # trans_val = val_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None, verbose=True)
+    # non_trans_val = val_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
+    # print('-->>')
+    # sequences_train = extract_pred_sequence(trans=trans_tr, non_trans=non_trans_tr, pred_ahead=args.pred,
+    #                                         balancing_ratio=1.0, neg_in_trans=True,
+    #                                         bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
+    # print('-->>')
+    # sequences_val = extract_pred_sequence(trans=trans_val, non_trans=non_trans_val, pred_ahead=args.pred,
+    #                                       balancing_ratio=1.0, neg_in_trans=True,
+    #                                       bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
+    train_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
+    train_intent_sequences_cropped = subsample_and_balance(train_intent_sequences, max_frames=args.max_frames,seed=args.seed)
+    
+
+    val_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "val", fps=args.fps,prediction_frames=args.pred, verbose=True)
+    val_intent_sequences_cropped = subsample_and_balance(val_intent_sequences, max_frames=args.max_frames,seed=args.seed)
+    
     print('------------------------------------------------------------------')
     print('Finish annotation loading', '\n')
     # construct and load model  
@@ -197,13 +228,15 @@ def main():
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     VAL_TRANSFORM = crop_preprocess
-    train_instances = PaddedSequenceDataset(sequences_train, image_dir=image_dir, padded_length=args.max_frames,
-                                            hflip_p = 0.5, preprocess=TRAIN_TRANSFORM)
-    val_instances = PaddedSequenceDataset(sequences_val, image_dir=image_dir_val, padded_length=args.max_frames,
-                                            hflip_p = 0.0, preprocess=VAL_TRANSFORM)
-    train_loader = torch.utils.data.DataLoader(train_instances, batch_size=args.batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_instances, batch_size=1, shuffle=False)
-    ds = ''
+    train_ds = IntentionSequenceDataset(train_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRAIN_TRANSFORM)
+    val_ds = IntentionSequenceDataset(val_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=VAL_TRANSFORM)
+    # train_instances = PaddedSequenceDataset(sequences_train, image_dir=image_dir, padded_length=args.max_frames,
+    #                                         hflip_p = 0.5, preprocess=TRAIN_TRANSFORM)
+    # val_instances = PaddedSequenceDataset(sequences_val, image_dir=image_dir_val, padded_length=args.max_frames,
+    #                                         hflip_p = 0.0, preprocess=VAL_TRANSFORM)
+    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_ds, batch_size=1, shuffle=False)
+    ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
