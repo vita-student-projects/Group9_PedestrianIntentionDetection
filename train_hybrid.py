@@ -67,9 +67,9 @@ class Args:
     titan: bool = False
     encoder_type: str = 'CC'
     encoder_pretrained: bool = False
-    epochs: int = 1
-    lr: float = 1e-4 #0.001
-    wd: float = 1e-5 #0.0
+    epochs: int = 10
+    lr: float = 0.001 #1e-4
+    wd: float =0.0 #1e-5
     batch_size: int = 4
     max_frames: int = 5
     output: str = None
@@ -93,6 +93,8 @@ def train_epoch(loader, model, criterion, optimizer, device):
     decoder_RNN.train()
     epoch_loss = 0.0
     for i, inputs in enumerate(loader):
+        # print iteration
+        print(f'iteration:{i}/{len(loader)}')
         # compute output and loss
         targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
@@ -132,6 +134,7 @@ def val_epoch(loader, model, criterion, device):
     y_pred = []
 
     for i, inputs in enumerate(loader):
+        print(f'iteration:{i}/{len(loader)}')
         # compute output and loss
         targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
@@ -243,7 +246,7 @@ def main():
     ap_min = 0.5
     print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, mf={args.max_frames}, training batch size={args.batch_size}')
     if args.output is None:
-        Save_path = r'./checkpoints/PVIBS/Decoder_IMBS_lr{}_wd{}_{}_{}_bm{}_mf{}_bs{}'.format(args.lr, args.wd, ds, args.mode,args.bbox_min,args.max_frames,args.batch_size)
+        Save_path = r'./checkpoints/Decoder_IMBS_lr{}_wd{}_{}_mf{}_pred{}_bs{}'.format(args.lr, args.wd, ds,args.max_frames,args.pred,args.batch_size)
     else:
         Save_path = args.output
     for epoch in range(start_epoch, end_epoch):
