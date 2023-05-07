@@ -151,10 +151,6 @@ def subsample_and_balance(intention_dataset, max_frames=MAX_FRAMES, seed=SEED):
             new_sample['sample_id'] = new_id
             for attribute in ['frames', 'bbox', 'action', 'occlusion', 'behavior', 'traffic_light']:
                 new_sample[attribute] = intention_dataset[ped_id][attribute][i:i + max_frames]
-            if intention_dataset[ped_id]['video_number']=='video_0020':
-                print('new_id:',new_id)
-                print('len:',len(intention_dataset[ped_id]['labels']))
-                print('i + max_frames - 1:',i + max_frames - 1)
             new_sample['label'] = intention_dataset[ped_id]['labels'][i + max_frames - 1]
             for static_attribute in ['video_number', 'attributes']:
                 new_sample[static_attribute] = intention_dataset[ped_id][static_attribute]
