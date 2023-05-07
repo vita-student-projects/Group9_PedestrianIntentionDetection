@@ -81,7 +81,7 @@ def get_pedb_info_jaad(annotations, vid):
 
 def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
     """
-    Add stop & go transition labels for every frame
+    Add cross & non-cross(c/nc) labels depends on prediction frame for every frame
     """
     all_cross = 0
     total_samples = 0
@@ -105,6 +105,7 @@ def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
             dataset[idx][attribute] = dataset[idx][attribute][:-prediction_frames]
         dataset[idx].pop('cross')
         dataset[idx]['crossing_share'] = crossing_share
+        
 
     if verbose:
         print('----------------------------------------------------------------')
@@ -141,12 +142,19 @@ def subsample_and_balance(intention_dataset, max_frames=MAX_FRAMES, seed=SEED):
     all_labels = []
     for ped_id in intention_dataset:
         n_frames = len(intention_dataset[ped_id]['frames'])
+        # add this to remove the sample which has no label (len(frames) <= prediction_frames in function add_cross_label_jaad)
+        if len(intention_dataset[ped_id]['labels'])==0:
+            continue
         for i in range(n_frames - max_frames):
             new_sample = {}
             new_id = f"{ped_id}_{intention_dataset[ped_id]['video_number']}_{i}"
             new_sample['sample_id'] = new_id
             for attribute in ['frames', 'bbox', 'action', 'occlusion', 'behavior', 'traffic_light']:
                 new_sample[attribute] = intention_dataset[ped_id][attribute][i:i + max_frames]
+            if intention_dataset[ped_id]['video_number']=='video_0020':
+                print('new_id:',new_id)
+                print('len:',len(intention_dataset[ped_id]['labels']))
+                print('i + max_frames - 1:',i + max_frames - 1)
             new_sample['label'] = intention_dataset[ped_id]['labels'][i + max_frames - 1]
             for static_attribute in ['video_number', 'attributes']:
                 new_sample[static_attribute] = intention_dataset[ped_id][static_attribute]
