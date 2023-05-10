@@ -163,11 +163,11 @@ def val_epoch(loader, model, criterion, device):
 
     AP_P = average_precision_score(y_true, y_pred)
     FP = n_n - n_tn
-    acc_P = n_tp / (n_tp + FP) if n_tp + FP > 0 else 0.0
+    precision_P = n_tp / (n_tp + FP) if n_tp + FP > 0 else 0.0
     recall_P = n_tp / n_p
-    f1_p = 2 * (acc_P * recall_P) / (acc_P + recall_P) if acc_P + recall_P > 0 else 0.0
+    f1_p = 2 * (precision_P * recall_P) / (precision_P + recall_P) if precision_P + recall_P > 0 else 0.0
     print('------------------------------------------------')
-    print(f'acc: {acc_P}')
+    print(f'precision: {precision_P}')
     print(f'recall: {n_tp / n_p}')
     print(f'F1-score : {f1_p}')
     print(f"average precision for transition prediction: {AP_P}")
@@ -186,6 +186,10 @@ def main():
     print('------------------------------------------------------------------')
     anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
     anns_paths_val, image_dir_val = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
+    print(anns_paths)
+    print(image_dir)
+    print(anns_paths_val)
+    print(image_dir_val)
     # train_data = TransDataset(data_paths=anns_paths, image_set="train", verbose=False)
     # trans_tr = train_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None,
     #                                             verbose=True)
