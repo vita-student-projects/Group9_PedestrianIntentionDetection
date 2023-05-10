@@ -1,5 +1,6 @@
 import argparse
 import time
+from tqdm import tqdm
 from sklearn.metrics import average_precision_score
 from sympy import true
 from zmq import device
@@ -67,7 +68,7 @@ class Args:
     titan: bool = False
     encoder_type: str = 'CC'
     encoder_pretrained: bool = False
-    epochs: int = 10
+    epochs: int = 2
     lr: float = 0.001 #1e-4
     wd: float =0.0 #1e-5
     batch_size: int = 4
@@ -92,9 +93,9 @@ def train_epoch(loader, model, criterion, optimizer, device):
             para.requires_grad = False
     decoder_RNN.train()
     epoch_loss = 0.0
-    for i, inputs in enumerate(loader):
+    for i, inputs in enumerate(tqdm(loader)):
         # print iteration
-        print(f'iteration:{i}/{len(loader)}')
+        #print(f'iteration:{i}/{len(loader)}')
         # compute output and loss
         targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
@@ -133,8 +134,8 @@ def val_epoch(loader, model, criterion, device):
     y_true = []
     y_pred = []
 
-    for i, inputs in enumerate(loader):
-        print(f'iteration:{i}/{len(loader)}')
+    for i, inputs in enumerate(tqdm(loader)):
+        #print(f'iteration:{i}/{len(loader)}')
         # compute output and loss
         targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
