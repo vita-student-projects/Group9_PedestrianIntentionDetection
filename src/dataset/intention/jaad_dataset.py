@@ -137,7 +137,7 @@ def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", su
     add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, verbose=verbose)
     return pedb_dataset
 
-def subsample_and_balance(intention_dataset, max_frames=MAX_FRAMES, seed=SEED):
+def subsample_and_balance(intention_dataset,balance, max_frames=MAX_FRAMES, seed=SEED):
     random.seed(seed)
     new_samples = []
     all_labels = []
@@ -158,15 +158,18 @@ def subsample_and_balance(intention_dataset, max_frames=MAX_FRAMES, seed=SEED):
             new_sample['ped_id'] = ped_id
             new_samples.append(new_sample)
             all_labels.append(new_sample['label'])
-
-    labels_stats = Counter(all_labels)
-    max_common = min(labels_stats[0], labels_stats[1])
-    crossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 1]
-    noncrossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 0]
-    kept_crossing_ids = random.sample(crossing_ids, max_common)
-    kept_noncrossing_ids = random.sample(noncrossing_ids, max_common)
-    kept_ids = kept_crossing_ids + kept_noncrossing_ids
-    balanced_new_samples = [new_samples[i] for i in kept_ids]
+    #balancing
+    if balance:
+        labels_stats = Counter(all_labels)
+        max_common = min(labels_stats[0], labels_stats[1])
+        crossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 1]
+        noncrossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 0]
+        kept_crossing_ids = random.sample(crossing_ids, max_common)
+        kept_noncrossing_ids = random.sample(noncrossing_ids, max_common)
+        kept_ids = kept_crossing_ids + kept_noncrossing_ids
+        balanced_new_samples = [new_samples[i] for i in kept_ids]
+    else:
+        balanced_new_samples = new_samples
     random.shuffle(balanced_new_samples)
     return balanced_new_samples
 
