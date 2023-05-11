@@ -17,69 +17,69 @@ from src.dataset.intention.jaad_dataset import JaadIntentionDataset
 from dataclasses import dataclass
 
 
-# def get_args():
-#     parser = argparse.ArgumentParser(description='Train hybrid model')
-#     parser.add_argument('--jaad', default=True, action='store_true',
-#                         help='use JAAD dataset')
-#     parser.add_argument('--pie', default=False, action='store_true',
-#                         help='use PIE dataset')
-#     parser.add_argument('--titan', default=False, action='store_true',
-#                         help='use TITAN dataset')
-#     parser.add_argument('--mode', default='GO', type=str,
-#                         help='transition mode, GO or STOP')
-#     parser.add_argument('--fps', default=5, type=int,
-#                         metavar='FPS', help='sampling rate(fps)')
-#     parser.add_argument('--max-frames', default=5, type=int,
-#                         help='maximum number of frames in histroy sequence')
-#     parser.add_argument('--pred', default=10, type=int,
-#                         help='prediction length, predicting-ahead time')
-#     parser.add_argument('--balancing-ratio', default=1.0, type=float,
-#                         help='ratio of balanced instances(1/0)')
-#     parser.add_argument('--seed', default=99, type=int,
-#                         help='random seed for sampling')
-#     parser.add_argument('--jitter-ratio', default=-1.0, type=float,
-#                         help='jitter bbox for cropping')
-#     parser.add_argument('--bbox-min', default=0, type=int,
-#                         help='minimum bbox size')
+def get_args():
+    parser = argparse.ArgumentParser(description='Train hybrid model')
+    parser.add_argument('--jaad', default=True, action='store_true',
+                        help='use JAAD dataset')
+    parser.add_argument('--pie', default=False, action='store_true',
+                        help='use PIE dataset')
+    parser.add_argument('--titan', default=False, action='store_true',
+                        help='use TITAN dataset')
+    parser.add_argument('--mode', default='GO', type=str,
+                        help='transition mode, GO or STOP')
+    parser.add_argument('--fps', default=5, type=int,
+                        metavar='FPS', help='sampling rate(fps)')
+    parser.add_argument('--max-frames', default=5, type=int,
+                        help='maximum number of frames in histroy sequence')
+    parser.add_argument('--pred', default=10, type=int,
+                        help='prediction length, predicting-ahead time')
+    parser.add_argument('--balancing-ratio', default=1.0, type=float,
+                        help='ratio of balanced instances(1/0)')
+    parser.add_argument('--seed', default=99, type=int,
+                        help='random seed for sampling')
+    parser.add_argument('--jitter-ratio', default=-1.0, type=float,
+                        help='jitter bbox for cropping')
+    parser.add_argument('--bbox-min', default=0, type=int,
+                        help='minimum bbox size')
     
-#     parser.add_argument('--encoder-type', default='CC', type=str,
-#                         help='encoder for images, CC(crop-context) or RC(roi-context)')
-#     parser.add_argument('--encoder-pretrained', default=False, 
-#                         help='load pretrained encoder')
-#     parser.add_argument('--encoder-path', default='', type=str,
-#                         help='path to encoder checkpoint for loading the pretrained weights')
-#     parser.add_argument('-lr', '--learning-rate', default=1e-4, type=float,
-#                         metavar='LR', help='initial learning rate', dest='lr')
-#     parser.add_argument('-b', '--batch-size', default=4, type=int,
-#                         metavar='N', help='mini-batch size (default: 4)')
-#     parser.add_argument('-e', '--epochs', default=10, type=int,
-#                         help='number of epochs to train')
-#     parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-5,
-#                         help='Weight decay', dest='wd')
-#     parser.add_argument('-o', '--output', default=None,
-#                         help='output file')
-#     args = parser.parse_args()
+    parser.add_argument('--encoder-type', default='CC', type=str,
+                        help='encoder for images, CC(crop-context) or RC(roi-context)')
+    parser.add_argument('--encoder-pretrained', default=False, 
+                        help='load pretrained encoder')
+    parser.add_argument('--encoder-path', default='', type=str,
+                        help='path to encoder checkpoint for loading the pretrained weights')
+    parser.add_argument('-lr', '--learning-rate', default=1e-4, type=float,
+                        metavar='LR', help='initial learning rate', dest='lr')
+    parser.add_argument('-b', '--batch-size', default=4, type=int,
+                        metavar='N', help='mini-batch size (default: 4)')
+    parser.add_argument('-e', '--epochs', default=10, type=int,
+                        help='number of epochs to train')
+    parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-5,
+                        help='Weight decay', dest='wd')
+    parser.add_argument('-o', '--output', default=None,
+                        help='output file')
+    args = parser.parse_args()
 
-#     return args
+    return args
 
-@dataclass
-class Args:
-    jaad: bool = True
-    pie: bool = False
-    titan: bool = False
-    encoder_type: str = 'CC'
-    encoder_pretrained: bool = False
-    epochs: int = 2
-    lr: float = 0.001 #1e-4
-    wd: float =0.0 #1e-5
-    batch_size: int = 4
-    max_frames: int = 5
-    output: str = None
-    jitter_ratio: float = 2
-    pred: int = 10
-    fps: int = 5
-    bbox_min: int = 0
-    seed: int = 99
+# @dataclass
+# class Args:
+#     jaad: bool = True
+#     pie: bool = False
+#     titan: bool = False
+#     encoder_type: str = 'CC'
+#     encoder_pretrained: bool = False
+#     epochs: int = 2
+#     lr: float = 0.001 #1e-4
+#     wd: float =0.0 #1e-5
+#     batch_size: int = 4
+#     max_frames: int = 5
+#     output: str = None
+#     jitter_ratio: float = 2
+#     pred: int = 10
+#     fps: int = 5
+#     bbox_min: int = 0
+#     seed: int = 99
 
 
 
@@ -179,8 +179,8 @@ def val_epoch(loader, model, criterion, device):
 
 
 def main():
-    # args = get_args()
-    args = Args()
+    args = get_args()
+    # args = Args()
     
     # loading data
     print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
@@ -208,11 +208,11 @@ def main():
     #                                       balancing_ratio=1.0, neg_in_trans=True,
     #                                       bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
     train_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    train_intent_sequences_cropped = subsample_and_balance(train_intent_sequences, max_frames=args.max_frames,seed=args.seed)
+    train_intent_sequences_cropped = subsample_and_balance(train_intent_sequences,balance=True, max_frames=args.max_frames,seed=args.seed)
     
 
     val_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "val", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    val_intent_sequences_cropped = subsample_and_balance(val_intent_sequences, max_frames=args.max_frames,seed=args.seed)
+    val_intent_sequences_cropped = subsample_and_balance(val_intent_sequences,balance=True, max_frames=args.max_frames,seed=args.seed)
     
     print('------------------------------------------------------------------')
     print('Finish annotation loading', '\n')
