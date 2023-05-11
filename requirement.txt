@@ -1,5 +1,5 @@
 numpy==1.24.3
-//torch>=1.7
+//torch>=1.7 cuda 11.1
 //torchvision
 matplotlib==3.7.1
 pillow

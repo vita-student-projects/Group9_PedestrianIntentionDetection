@@ -9,6 +9,7 @@ from src.model.baselines import *
 from src.model.models import *
 from src.transform.preprocess import *
 from src.utils import *
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
 
 
 def get_args():
@@ -105,13 +106,15 @@ def main():
     print('------------------------------------------------------------------')
     anns_paths_eval, image_dir_eval = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
     print('-->>')
-    eval_data = TransDataset(data_paths=anns_paths_eval, image_set="test", verbose=False)
-    trans_eval = eval_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None, verbose=True)
-    non_trans_eval = eval_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
-    print('-->>')
-    sequences_eval = extract_pred_sequence(trans=trans_eval, non_trans=non_trans_eval, pred_ahead=args.pred,
-                                          balancing_ratio=1.0, neg_in_trans=True,
-                                          bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
+    # eval_data = TransDataset(data_paths=anns_paths_eval, image_set="test", verbose=False)
+    # trans_eval = eval_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None, verbose=True)
+    # non_trans_eval = eval_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
+    # print('-->>')
+    # sequences_eval = extract_pred_sequence(trans=trans_eval, non_trans=non_trans_eval, pred_ahead=args.pred,
+    #                                       balancing_ratio=1.0, neg_in_trans=True,
+    #                                       bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
+    eval_intent_sequences = build_pedb_dataset_jaad(anns_paths_eval["JAAD"]["anns"], image_dir_eval["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
+    eval_intent_sequences_cropped = subsample_and_balance(eval_intent_sequences,balance=False, max_frames=args.max_frames,seed=args.seed)
     print('------------------------------------------------------------------')
     print('Finish annotation loading', '\n')
 
@@ -126,9 +129,10 @@ def main():
     jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
     crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
     VAL_TRANSFORM = crop_preprocess
-    val_instances = PaddedSequenceDataset(sequences_eval, image_dir=image_dir_eval, padded_length=args.max_frames,
-                                            hflip_p = 0.0, preprocess=VAL_TRANSFORM)
-    test_loader = torch.utils.data.DataLoader(val_instances, batch_size=1, shuffle=False)
+    # val_instances = PaddedSequenceDataset(sequences_eval, image_dir=image_dir_eval, padded_length=args.max_frames,
+    #                                         hflip_p = 0.0, preprocess=VAL_TRANSFORM)
+    test_ds = IntentionSequenceDataset(eval_intent_sequences_cropped, image_dir=image_dir_eval, hflip_p = 0.5, preprocess=VAL_TRANSFORM)
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False)
 
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on balanced test set, PVIBS, jitter={jitter_ratio}, bbox-min={args.bbox_min}')
