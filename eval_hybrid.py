@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import torch
+from tqdm import tqdm
 from sklearn.metrics import average_precision_score, classification_report
 from src.dataset.trans.data import *
 from src.dataset.loader import *
@@ -15,7 +16,7 @@ from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsampl
 def get_args():
     parser = argparse.ArgumentParser(description='cropped frame model Training')
 
-    parser.add_argument('--jaad', default=False, action='store_true',
+    parser.add_argument('--jaad', default=True, action='store_true',
                         help='use JAAD dataset')
     parser.add_argument('--pie', default=False, action='store_true',
                         help='use PIE dataset')
@@ -64,14 +65,13 @@ def eval_model(loader, model, device):
     y_out = []
     scores = []
     with torch.no_grad():
-        for i, inputs in enumerate(loader):
+        for i, inputs in enumerate(tqdm(loader)):
             # evaluate model
             targets = inputs['label'].to(device, non_blocking=True)
             images = inputs['image'].to(device, non_blocking=True)
             bboxes_ped = inputs['bbox_ped']
             seq_len = inputs['seq_length']
-            behavior_list = reshape_anns(inputs['behavior'], device)
-            behavior = batch_first(behavior_list).to(device, non_blocking=True)
+            behavior = inputs['behavior'].to(device, non_blocking=True)
             scene = inputs['attributes'].to(device, non_blocking=True)
             bbox_ped_list = reshape_bbox(bboxes_ped, device)
             pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
@@ -105,6 +105,8 @@ def main():
     print('Annotation loading-->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
     print('------------------------------------------------------------------')
     anns_paths_eval, image_dir_eval = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
+    print(anns_paths_eval)
+    print(image_dir_eval)
     print('-->>')
     # eval_data = TransDataset(data_paths=anns_paths_eval, image_set="test", verbose=False)
     # trans_eval = eval_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None, verbose=True)
@@ -113,7 +115,8 @@ def main():
     # sequences_eval = extract_pred_sequence(trans=trans_eval, non_trans=non_trans_eval, pred_ahead=args.pred,
     #                                       balancing_ratio=1.0, neg_in_trans=True,
     #                                       bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
-    eval_intent_sequences = build_pedb_dataset_jaad(anns_paths_eval["JAAD"]["anns"], image_dir_eval["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
+    # train_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
+    eval_intent_sequences = build_pedb_dataset_jaad(anns_paths_eval["JAAD"]["anns"], anns_paths_eval["JAAD"]["split"], image_set = "test", fps=args.fps,prediction_frames=args.pred, verbose=True)
     eval_intent_sequences_cropped = subsample_and_balance(eval_intent_sequences,balance=False, max_frames=args.max_frames,seed=args.seed)
     print('------------------------------------------------------------------')
     print('Finish annotation loading', '\n')
