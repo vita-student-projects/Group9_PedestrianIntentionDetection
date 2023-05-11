@@ -1,5 +1,6 @@
 import argparse
 import time
+import datetime
 from tqdm import tqdm
 from sklearn.metrics import average_precision_score
 from sympy import true
@@ -251,7 +252,7 @@ def main():
     ap_min = 0.5
     print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, mf={args.max_frames}, training batch size={args.batch_size}')
     if args.output is None:
-        Save_path = r'./checkpoints/Decoder_IMBS_lr{}_wd{}_{}_mf{}_pred{}_bs{}'.format(args.lr, args.wd, ds,args.max_frames,args.pred,args.batch_size)
+        Save_path = r'./checkpoints/Decoder_IMBS_lr{}_wd{}_{}_mf{}_pred{}_bs{}_{}'.format(args.lr, args.wd, ds,args.max_frames,args.pred,args.batch_size,datetime.datetime.now().strftime("%Y%m%d%H%M"))
     else:
         Save_path = args.output
     for epoch in range(start_epoch, end_epoch):
