@@ -9,7 +9,10 @@ import torchvision
 import math
 
 LOG = logging.getLogger(__name__)
-
+# SCITAS:
+# anns:/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl
+# split:DATA/annotations/JAAD/splits/
+# image JAAD:/work/scitas-share/datasets/Vita/civil-459/JAAD/images
 def define_path(use_jaad=True, use_pie=True, use_titan=True):
     all_anns_paths = {'JAAD': {'anns': 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl',
                                'split': 'DATA/annotations/JAAD/splits/'},
@@ -18,6 +21,7 @@ def define_path(use_jaad=True, use_pie=True, use_titan=True):
                       #'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
                       #          'split': '/work/vita/datasets/TITAN/splits/'}
                       }
+    
     all_image_dir = {'JAAD': 'DATA/images/JAAD/',
                      #'PIE': '/work/vita/datasets/PIE/images/',
                      #'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
