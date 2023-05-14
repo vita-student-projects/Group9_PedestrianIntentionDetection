@@ -128,7 +128,7 @@ def val_epoch(loader, model, criterion, device):
             y_pred.append(float(outputs_RNN[j].item()))
             if targets[j] > 0.5:
                 n_p += 1
-                if outputs_RNN[j] > 0.5:
+                if outputs_RNN[j] >= 0.5:
                     n_tp += 1
             else:
                 n_n += 1
@@ -137,11 +137,11 @@ def val_epoch(loader, model, criterion, device):
 
     AP_P = average_precision_score(y_true, y_pred)
     FP = n_n - n_tn
-    acc_P = n_tp / (n_tp + FP) if n_tp + FP > 0 else 0.0
+    prec_P = n_tp / (n_tp + FP) if n_tp + FP > 0 else 0.0
     recall_P = n_tp / n_p
-    f1_p = 2 * (acc_P * recall_P) / (acc_P + recall_P) if acc_P + recall_P > 0 else 0.0
+    f1_p = 2 * (prec_P * recall_P) / (prec_P + recall_P) if prec_P + recall_P > 0 else 0.0
     print('------------------------------------------------')
-    print(f'acc: {acc_P}')
+    print(f'precision: {prec_P}')
     print(f'recall: {n_tp / n_p}')
     print(f'F1-score : {f1_p}')
     print(f"average precision for transition prediction: {AP_P}")

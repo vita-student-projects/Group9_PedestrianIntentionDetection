@@ -52,7 +52,7 @@ def get_pedb_info_jaad(annotations, vid):
                 pedb_info[idx]['occlusion'].append(occlusion[i])
                 pedb_info[idx]['cross'].append(cross[i])
                 beh_vec = [0, 0, 0, 0]
-                beh_vec[0] = action[i]
+                #beh_vec[0] = action[i]
                 beh_vec[1] = look[i]
                 beh_vec[2] = nod[i]
                 # TODO: maybe include it as a category?
