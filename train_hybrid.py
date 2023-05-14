@@ -12,6 +12,8 @@ from src.transform.preprocess import *
 from src.utils import *
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
 from src.dataset.intention.jaad_dataset import JaadIntentionDataset
+from pathlib import Path
+from torch.utils.data import DataLoader
 import wandb
 
 
@@ -61,17 +63,15 @@ def get_args():
     return args
 
 
-def train_epoch(loader, model, criterion, optimizer, device):
+def train_epoch(loader, model, criterion, optimizer, device, epoch):
 
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
     # freeze CNN-encoder during training
-    encoder_CNN.train()
-    for child in encoder_CNN.resnet.children():
-        for para in child.parameters():
-            para.requires_grad = False
+    encoder_CNN.eval()
     decoder_RNN.train()
     epoch_loss = 0.0
+    n_steps = len(loader)
     for step, inputs in enumerate(tqdm(loader)):
         targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
@@ -81,13 +81,14 @@ def train_epoch(loader, model, criterion, optimizer, device):
         scene = inputs['attributes'].to(device, non_blocking=True)
         bbox_ped_list = reshape_bbox(bboxes_ped, device)
         pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
-        outputs_CNN = encoder_CNN(images, seq_len)
+        with torch.no_grad():
+            outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         # record loss
         optimizer.zero_grad()
         curr_loss = loss.item()
-        wandb.log({'train/loss': curr_loss })
+        wandb.log({'train/loss': curr_loss, 'train/step': epoch * n_steps + step})
         epoch_loss += curr_loss
         # compute gradient and do SGD step, scheduler step
         loss.backward()
@@ -97,7 +98,7 @@ def train_epoch(loader, model, criterion, optimizer, device):
 
 
 @torch.no_grad()
-def val_epoch(loader, model, criterion, device):
+def val_epoch(loader, model, criterion, device, epoch):
     # swith to evaluate mode
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
@@ -111,7 +112,8 @@ def val_epoch(loader, model, criterion, device):
     y_true = []
     y_pred = []
 
-    for inputs in tqdm(loader):
+    n_steps = len(loader)
+    for step, inputs in enumerate(tqdm(loader)):
         targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
         bboxes_ped = inputs['bbox_ped']
@@ -126,7 +128,7 @@ def val_epoch(loader, model, criterion, device):
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
-        wandb.log({'val/loss': curr_loss })
+        wandb.log({'val/loss': curr_loss, 'val/step': epoch * n_steps + step})
         epoch_loss += curr_loss
         for j in range(targets.size()[0]):
             y_true.append(int(targets[j].item()))
@@ -202,8 +204,8 @@ def main():
     train_ds = IntentionSequenceDataset(train_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRAIN_TRANSFORM)
     val_ds = IntentionSequenceDataset(val_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=VAL_TRANSFORM)
 
-    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_ds, batch_size=1, shuffle=False)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
     ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
@@ -211,13 +213,15 @@ def main():
     ap_min = 0.5
     print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, mf={args.max_frames}, training batch size={args.batch_size}')
     if args.output is None:
-        Save_path = fr'./checkpoints/{run_name}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}'
+        cp_dir = Path(f'./checkpoints/{run_name}')
+        cp_dir.mkdir(parents=True, exist_ok=True)
+        Save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}'
     else:
         Save_path = args.output
     for epoch in range(start_epoch, end_epoch):
         start_epoch_time = time.time()
-        train_loss = train_epoch(train_loader, model_gpu, criterion, optimizer, device)
-        val_loss, val_score = val_epoch(val_loader, model_gpu, criterion, device)
+        train_loss = train_epoch(train_loader, model_gpu, criterion, optimizer, device, epoch)
+        val_loss, val_score = val_epoch(val_loader, model_gpu, criterion, device, epoch)
         scheduler.step(val_score)
         end_epoch_time = time.time() - start_epoch_time
         print('\n', '-----------------------------------------------------')
