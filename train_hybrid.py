@@ -270,8 +270,11 @@ def main():
         print('--------------------------------------------------------', '\n')
         total_time += end_epoch_time
         if val_score > ap_min:
+           print('Save model in{}'.format(Save_path))
            save_to_checkpoint(Save_path , epoch, model_gpu['decoder'], optimizer, scheduler, verbose=True)
            ap_min = val_score
+        else:
+              print('Not save model, since the score is not improved')
     print('\n', '**************************************************************')
     print(f'End training at epoch {end_epoch}')
     print('total time: {:.2f}'.format(total_time))
