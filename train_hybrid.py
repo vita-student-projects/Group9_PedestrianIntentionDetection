@@ -155,7 +155,7 @@ def val_epoch(loader, model, criterion, device):
             y_pred.append(float(outputs_RNN[j].item()))
             if targets[j] > 0.5:
                 n_p += 1
-                if outputs_RNN[j] > 0.5:
+                if outputs_RNN[j] >= 0.5:
                     n_tp += 1
             else:
                 n_n += 1
