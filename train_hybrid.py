@@ -3,8 +3,6 @@ import time
 import datetime
 from tqdm import tqdm
 from sklearn.metrics import average_precision_score
-from sympy import true
-from zmq import device
 from src.dataset.trans.data import *
 from src.dataset.loader import *
 from src.model.basenet import *
@@ -14,7 +12,9 @@ from src.transform.preprocess import *
 from src.utils import *
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
 from src.dataset.intention.jaad_dataset import JaadIntentionDataset
-from dataclasses import dataclass
+from pathlib import Path
+from torch.utils.data import DataLoader
+import wandb
 
 
 def get_args():
@@ -62,42 +62,17 @@ def get_args():
 
     return args
 
-# @dataclass
-# class Args:
-#     jaad: bool = True
-#     pie: bool = False
-#     titan: bool = False
-#     encoder_type: str = 'CC'
-#     encoder_pretrained: bool = False
-#     epochs: int = 2
-#     lr: float = 0.001 #1e-4
-#     wd: float =0.0 #1e-5
-#     batch_size: int = 4
-#     max_frames: int = 5
-#     output: str = None
-#     jitter_ratio: float = 2
-#     pred: int = 10
-#     fps: int = 5
-#     bbox_min: int = 0
-#     seed: int = 99
 
-
-
-def train_epoch(loader, model, criterion, optimizer, device):
+def train_epoch(loader, model, criterion, optimizer, device, epoch):
 
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
     # freeze CNN-encoder during training
-    encoder_CNN.train()
-    for child in encoder_CNN.resnet.children():
-        for para in child.parameters():
-            para.requires_grad = False
+    encoder_CNN.eval()
     decoder_RNN.train()
     epoch_loss = 0.0
-    for i, inputs in enumerate(tqdm(loader)):
-        # print iteration
-        #print(f'iteration:{i}/{len(loader)}')
-        # compute output and loss
+    n_steps = len(loader)
+    for step, inputs in enumerate(tqdm(loader)):
         targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
         bboxes_ped = inputs['bbox_ped']
@@ -106,12 +81,15 @@ def train_epoch(loader, model, criterion, optimizer, device):
         scene = inputs['attributes'].to(device, non_blocking=True)
         bbox_ped_list = reshape_bbox(bboxes_ped, device)
         pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
-        outputs_CNN = encoder_CNN(images, seq_len)
+        with torch.no_grad():
+            outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         # record loss
         optimizer.zero_grad()
-        epoch_loss += float(loss.item())
+        curr_loss = loss.item()
+        wandb.log({'train/loss': curr_loss, 'train/step': epoch * n_steps + step})
+        epoch_loss += curr_loss
         # compute gradient and do SGD step, scheduler step
         loss.backward()
         optimizer.step()
@@ -120,7 +98,7 @@ def train_epoch(loader, model, criterion, optimizer, device):
 
 
 @torch.no_grad()
-def val_epoch(loader, model, criterion, device):
+def val_epoch(loader, model, criterion, device, epoch):
     # swith to evaluate mode
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
@@ -128,16 +106,14 @@ def val_epoch(loader, model, criterion, device):
     encoder_CNN.eval()
     decoder_RNN.eval()
     epoch_loss = 0.0
-    n_p = 0.0
-    n_n = 0.0
-    n_tp = 0.0
-    n_tn = 0.0
+    n_p, n_n = 0.0, 0.0
+    n_tp, n_tn = 0.0, 0.0
+
     y_true = []
     y_pred = []
 
-    for i, inputs in enumerate(tqdm(loader)):
-        #print(f'iteration:{i}/{len(loader)}')
-        # compute output and loss
+    n_steps = len(loader)
+    for step, inputs in enumerate(tqdm(loader)):
         targets = inputs['label'].to(device, non_blocking=True)
         images = inputs['image'].to(device, non_blocking=True)
         bboxes_ped = inputs['bbox_ped']
@@ -146,10 +122,14 @@ def val_epoch(loader, model, criterion, device):
         scene = inputs['attributes'].to(device, non_blocking=True)
         bbox_ped_list = reshape_bbox(bboxes_ped, device)
         pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
+
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
+
         loss = criterion(outputs_RNN, targets.view(-1, 1))
-        epoch_loss += float(loss.item())
+        curr_loss = loss.item()
+        wandb.log({'val/loss': curr_loss, 'val/step': epoch * n_steps + step})
+        epoch_loss += curr_loss
         for j in range(targets.size()[0]):
             y_true.append(int(targets[j].item()))
             y_pred.append(float(outputs_RNN[j].item()))
@@ -167,6 +147,8 @@ def val_epoch(loader, model, criterion, device):
     precision_P = n_tp / (n_tp + FP) if n_tp + FP > 0 else 0.0
     recall_P = n_tp / n_p
     f1_p = 2 * (precision_P * recall_P) / (precision_P + recall_P) if precision_P + recall_P > 0 else 0.0
+    wandb.log({'val/precision': precision_P , 'val/recall': recall_P, 'val/f1': f1_p, 'val/AP': AP_P})
+    
     print('------------------------------------------------')
     print(f'precision: {precision_P}')
     print(f'recall: {n_tp / n_p}')
@@ -180,37 +162,19 @@ def val_epoch(loader, model, criterion, device):
 
 def main():
     args = get_args()
-    # args = Args()
-    
+    wandb.init(
+        project="dlav-intention-prediction",
+        config=args,
+    )
+    run_name = wandb.run.name
     # loading data
     print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
     print('------------------------------------------------------------------')
     anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
-    anns_paths_val, image_dir_val = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
-    print(anns_paths)
-    print(image_dir)
-    print(anns_paths_val)
-    print(image_dir_val)
-    # train_data = TransDataset(data_paths=anns_paths, image_set="train", verbose=False)
-    # trans_tr = train_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None,
-    #                                             verbose=True)
-    # non_trans_tr = train_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
-    # print('-->>')
-    # val_data = TransDataset(data_paths=anns_paths_val, image_set="test", verbose=False)
-    # trans_val = val_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None, verbose=True)
-    # non_trans_val = val_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
-    # print('-->>')
-    # sequences_train = extract_pred_sequence(trans=trans_tr, non_trans=non_trans_tr, pred_ahead=args.pred,
-    #                                         balancing_ratio=1.0, neg_in_trans=True,
-    #                                         bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
-    # print('-->>')
-    # sequences_val = extract_pred_sequence(trans=trans_val, non_trans=non_trans_val, pred_ahead=args.pred,
-    #                                       balancing_ratio=1.0, neg_in_trans=True,
-    #                                       bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
+
     train_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
     train_intent_sequences_cropped = subsample_and_balance(train_intent_sequences,balance=True, max_frames=args.max_frames,seed=args.seed)
     
-
     val_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "val", fps=args.fps,prediction_frames=args.pred, verbose=True)
     val_intent_sequences_cropped = subsample_and_balance(val_intent_sequences,balance=True, max_frames=args.max_frames,seed=args.seed)
     
@@ -239,12 +203,9 @@ def main():
     VAL_TRANSFORM = crop_preprocess
     train_ds = IntentionSequenceDataset(train_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRAIN_TRANSFORM)
     val_ds = IntentionSequenceDataset(val_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=VAL_TRANSFORM)
-    # train_instances = PaddedSequenceDataset(sequences_train, image_dir=image_dir, padded_length=args.max_frames,
-    #                                         hflip_p = 0.5, preprocess=TRAIN_TRANSFORM)
-    # val_instances = PaddedSequenceDataset(sequences_val, image_dir=image_dir_val, padded_length=args.max_frames,
-    #                                         hflip_p = 0.0, preprocess=VAL_TRANSFORM)
-    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_ds, batch_size=1, shuffle=False)
+
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
     ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
@@ -252,13 +213,15 @@ def main():
     ap_min = 0.5
     print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, mf={args.max_frames}, training batch size={args.batch_size}')
     if args.output is None:
-        Save_path = r'./checkpoints/Decoder_IMBS_lr{}_wd{}_{}_mf{}_pred{}_bs{}_{}'.format(args.lr, args.wd, ds,args.max_frames,args.pred,args.batch_size,datetime.datetime.now().strftime("%Y%m%d%H%M"))
+        cp_dir = Path(f'./checkpoints/{run_name}')
+        cp_dir.mkdir(parents=True, exist_ok=True)
+        Save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}'
     else:
         Save_path = args.output
     for epoch in range(start_epoch, end_epoch):
         start_epoch_time = time.time()
-        train_loss = train_epoch(train_loader, model_gpu, criterion, optimizer, device)
-        val_loss, val_score = val_epoch(val_loader, model_gpu, criterion, device)
+        train_loss = train_epoch(train_loader, model_gpu, criterion, optimizer, device, epoch)
+        val_loss, val_score = val_epoch(val_loader, model_gpu, criterion, device, epoch)
         scheduler.step(val_score)
         end_epoch_time = time.time() - start_epoch_time
         print('\n', '-----------------------------------------------------')
