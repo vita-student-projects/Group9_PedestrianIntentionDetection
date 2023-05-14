@@ -162,7 +162,7 @@ def main():
     args = get_args()
     wandb.init(
         project="dlav-intention-prediction",
-        config=args.to_dict(),
+        config=args,
     )
     run_name = wandb.run.name
     # loading data
@@ -211,7 +211,7 @@ def main():
     ap_min = 0.5
     print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, mf={args.max_frames}, training batch size={args.batch_size}')
     if args.output is None:
-        Save_path = fr'./checkpoints/{run_name}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}')
+        Save_path = fr'./checkpoints/{run_name}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}'
     else:
         Save_path = args.output
     for epoch in range(start_epoch, end_epoch):
