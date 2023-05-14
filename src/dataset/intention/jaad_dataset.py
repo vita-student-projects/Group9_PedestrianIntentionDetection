@@ -52,7 +52,8 @@ def get_pedb_info_jaad(annotations, vid):
                 pedb_info[idx]['occlusion'].append(occlusion[i])
                 pedb_info[idx]['cross'].append(cross[i])
                 beh_vec = [0, 0, 0, 0]
-                #beh_vec[0] = action[i]
+                # change for testing the influence of walking/non-walking to training
+                # beh_vec[0] = action[i]
                 beh_vec[1] = look[i]
                 beh_vec[2] = nod[i]
                 # TODO: maybe include it as a category?
@@ -81,7 +82,7 @@ def get_pedb_info_jaad(annotations, vid):
 
 def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
     """
-    Add stop & go transition labels for every frame
+    Add cross & non-cross(c/nc) labels depends on prediction frame for every frame
     """
     all_cross = 0
     total_samples = 0
@@ -105,6 +106,7 @@ def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
             dataset[idx][attribute] = dataset[idx][attribute][:-prediction_frames]
         dataset[idx].pop('cross')
         dataset[idx]['crossing_share'] = crossing_share
+        
 
     if verbose:
         print('----------------------------------------------------------------')
@@ -135,12 +137,15 @@ def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", su
     add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, verbose=verbose)
     return pedb_dataset
 
-def subsample_and_balance(intention_dataset, max_frames=MAX_FRAMES, seed=SEED):
+def subsample_and_balance(intention_dataset,balance, max_frames=MAX_FRAMES, seed=SEED):
     random.seed(seed)
     new_samples = []
     all_labels = []
     for ped_id in intention_dataset:
         n_frames = len(intention_dataset[ped_id]['frames'])
+        # add this to remove the sample which has no label (len(frames) <= prediction_frames in function add_cross_label_jaad)
+        if len(intention_dataset[ped_id]['labels'])==0:
+            continue
         for i in range(n_frames - max_frames):
             new_sample = {}
             new_id = f"{ped_id}_{intention_dataset[ped_id]['video_number']}_{i}"
@@ -153,15 +158,18 @@ def subsample_and_balance(intention_dataset, max_frames=MAX_FRAMES, seed=SEED):
             new_sample['ped_id'] = ped_id
             new_samples.append(new_sample)
             all_labels.append(new_sample['label'])
-
-    labels_stats = Counter(all_labels)
-    max_common = min(labels_stats[0], labels_stats[1])
-    crossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 1]
-    noncrossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 0]
-    kept_crossing_ids = random.sample(crossing_ids, max_common)
-    kept_noncrossing_ids = random.sample(noncrossing_ids, max_common)
-    kept_ids = kept_crossing_ids + kept_noncrossing_ids
-    balanced_new_samples = [new_samples[i] for i in kept_ids]
+    #balancing
+    if balance:
+        labels_stats = Counter(all_labels)
+        max_common = min(labels_stats[0], labels_stats[1])
+        crossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 1]
+        noncrossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 0]
+        kept_crossing_ids = random.sample(crossing_ids, max_common)
+        kept_noncrossing_ids = random.sample(noncrossing_ids, max_common)
+        kept_ids = kept_crossing_ids + kept_noncrossing_ids
+        balanced_new_samples = [new_samples[i] for i in kept_ids]
+    else:
+        balanced_new_samples = new_samples
     random.shuffle(balanced_new_samples)
     return balanced_new_samples
 

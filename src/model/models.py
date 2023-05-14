@@ -119,9 +119,9 @@ class DecoderRNN_IMBS(nn.Module):
         self.act = nn.Sigmoid()
 
     def forward(self, xc_3d, xp_3d, xb_3d, xs_2d, x_lengths):  
-        print("entered decoder forward", flush=True)      
+        # print("entered decoder forward", flush=True)      
         # use input of descending length
-        print("xc_3d shape", xc_3d.shape, "xp_3d shape", xp_3d.shape, 'xb_3d shape', xb_3d.shape, flush=True)
+        # print("xc_3d shape", xc_3d.shape, "xp_3d shape", xp_3d.shape, 'xb_3d shape', xb_3d.shape, flush=True)
         packed_x0_RNN = torch.nn.utils.rnn.pack_padded_sequence(xc_3d, x_lengths, 
                                                                 batch_first=True, enforce_sorted=False)
         packed_x1_RNN = torch.nn.utils.rnn.pack_padded_sequence(xp_3d, x_lengths, 
@@ -133,11 +133,11 @@ class DecoderRNN_IMBS(nn.Module):
         self.RNN_2.flatten_parameters()
 
         packed_RNN_out_0, _ = self.RNN_0(packed_x0_RNN, None)
-        print("RNN0 done", flush=True)
+        # print("RNN0 done", flush=True)
         packed_RNN_out_1, _ = self.RNN_1(packed_x1_RNN, None)
-        print("RNN1 done", flush=True)
+        # print("RNN1 done", flush=True)
         packed_RNN_out_2, _ = self.RNN_2(packed_x2_RNN, None)
-        print("RNN2 done", flush=True)
+        # print("RNN2 done", flush=True)
         """ None represents zero initial hidden state. RNN_out has shape=(batch, time_step, output_size) """
         RNN_out_0, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_RNN_out_0, batch_first=True)
         RNN_out_0 = RNN_out_0.contiguous()
@@ -146,7 +146,7 @@ class DecoderRNN_IMBS(nn.Module):
         RNN_out_2, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_RNN_out_2, batch_first=True)
         RNN_out_2 = RNN_out_2.contiguous()
       
-        print(f'passed RNN encoding', flush=True)
+        # print(f'passed RNN encoding', flush=True)
     
         # choose RNN_out at the last time step
         output_0 = RNN_out_0[:, -1, :]
@@ -161,14 +161,14 @@ class DecoderRNN_IMBS(nn.Module):
         x1 = self.fc1(x_ipv)
         x1 = F.relu(x1)
         x1 = self.dropout(x1)
-        print('passed fc1', flush=True)
+        # print('passed fc1', flush=True)
         x_ipvb = torch.cat((x1, output_2, xs_2d), dim=1)
         x = self.fc2(x_ipvb)
         x = F.relu(x)
-        print('passed fc2', flush=True)
+        # print('passed fc2', flush=True)
         x = self.fc3(x)
         x = self.act(x)
-        print('passed fc3', flush=True)
+        # print('passed fc3', flush=True)
         return x
 
 def build_encoder_res18(args):
