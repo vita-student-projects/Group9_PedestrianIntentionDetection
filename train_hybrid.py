@@ -58,6 +58,9 @@ def get_args():
                         help='Weight decay', dest='wd')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
+    
+    parser.add_argument('-mobilenet', '--mobilenet', default=False,type=bool,
+                        help='change cnn encoder to mobilenet')
     args = parser.parse_args()
 
     return args
