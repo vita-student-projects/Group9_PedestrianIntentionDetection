@@ -224,30 +224,24 @@ def build_encoder_res18(args):
              cnn_gpu = nn.Sequential(*res_modules)
 
         else:
-            if args.mobilenet:
-                print('Using mobilenetv3 as cnn encoder!!')
+            if args.mobilenetsmall:
+                print('Using mobilenetv3 small as cnn encoder!!')
                 # small mobilev3 model
                 mobilev3_cpu = torchvision.models.mobilenet_v3_small(pretrained=True)
+                cnn_gpu = mobilev3_cpu.to(device)
+            elif args.mobilenetbig:
+                print('Using mobilenetv3 big as cnn encoder!!')
                 # big mobilev3 model
-                # mobilev3_cpu = torchvision.models.mobilenet_v3_large(pretrained=True)
-                print(mobilev3_cpu)
-                # remove last fc
-                # mobilev3_cpu.classifier = torch.nn.Identity()
-                # print(mobilev3_cpu.classifier)
-                # print(mobilev3_cpu.classifier[0].in_features)
+                mobilev3_cpu = torchvision.models.mobilenet_v3_large(pretrained=True)
                 cnn_gpu = mobilev3_cpu.to(device)
             else:
+                print('Using resnet18 cnn encoder!!')
                 res18_cpu = torchvision.models.resnet18(pretrained=True)
-                print(res18_cpu)
                 # remove last fc
-                print('before remove fc')
-                print(res18_cpu.fc)
                 res18_cpu.fc = torch.nn.Identity()
-                print('res18_cpu fc removed')
-                print(res18_cpu.fc)
                 cnn_gpu = res18_cpu.to(device)
 
-        if args.mobilenet:
+        if args.mobilenetsmall or args.mobilenetbig:
             encoder_cnn = MobilenetCropEncoder(mobilenet=cnn_gpu)
         else:
             encoder_cnn = Res18CropEncoder(resnet=cnn_gpu)
