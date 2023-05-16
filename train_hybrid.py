@@ -11,7 +11,6 @@ from src.model.models import *
 from src.transform.preprocess import *
 from src.utils import *
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
-from src.dataset.intention.jaad_dataset import JaadIntentionDataset
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
@@ -64,11 +63,10 @@ def get_args():
 
 
 def train_epoch(loader, model, criterion, optimizer, device, epoch):
-
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
-    # freeze CNN-encoder during training
-    encoder_CNN.eval()
+
+    encoder_CNN.train()
     decoder_RNN.train()
     epoch_loss = 0.0
     n_steps = len(loader)
@@ -81,8 +79,8 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         scene = inputs['attributes'].to(device, non_blocking=True)
         bbox_ped_list = reshape_bbox(bboxes_ped, device)
         pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
-        with torch.no_grad():
-            outputs_CNN = encoder_CNN(images, seq_len)
+
+        outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         # record loss
@@ -133,7 +131,7 @@ def val_epoch(loader, model, criterion, device, epoch):
         for j in range(targets.size()[0]):
             y_true.append(int(targets[j].item()))
             y_pred.append(float(outputs_RNN[j].item()))
-            if targets[j] > 0.5:
+            if targets[j]:
                 n_p += 1
                 if outputs_RNN[j] >= 0.5:
                     n_tp += 1
@@ -183,6 +181,9 @@ def main():
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = build_encoder_res18(args)
+    # freeze CNN-encoder during training
+    encoder_res18.freeze_backbone()
+
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
     model_gpu = {'encoder': encoder_res18, 'decoder': decoder_lstm}
