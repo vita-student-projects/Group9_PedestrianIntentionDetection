@@ -14,6 +14,7 @@ from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsampl
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
+from src.early_stopping import EarlyStopping
 
 
 def get_args():
@@ -57,6 +58,7 @@ def get_args():
                         help='Weight decay', dest='wd')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
+    parser.add_argument('--early-stopping-patience', default=3, type=int,)
     args = parser.parse_args()
 
     return args
@@ -186,7 +188,7 @@ def main():
 
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
-    model_gpu = {'encoder': encoder_res18, 'decoder': decoder_lstm}
+    model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     crnn_params = list(encoder_res18.fc.parameters()) + list(decoder_lstm.parameters())
@@ -211,19 +213,24 @@ def main():
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
-    ap_min = 0.5
+
     print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, mf={args.max_frames}, training batch size={args.batch_size}')
     if args.output is None:
         cp_dir = Path(f'./checkpoints/{run_name}')
         cp_dir.mkdir(parents=True, exist_ok=True)
-        Save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}'
+        save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
+        early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)
     else:
         Save_path = args.output
     for epoch in range(start_epoch, end_epoch):
         start_epoch_time = time.time()
-        train_loss = train_epoch(train_loader, model_gpu, criterion, optimizer, device, epoch)
-        val_loss, val_score = val_epoch(val_loader, model_gpu, criterion, device, epoch)
+        train_loss = train_epoch(train_loader, model, criterion, optimizer, device, epoch)
+        val_loss, val_score = val_epoch(val_loader, model, criterion, device, epoch)
         scheduler.step(val_score)
+        early_stopping(-val_score, model, optimizer, epoch)
+        if early_stopping.early_stop:
+            print(f'Early stopping after {epoch} epochs...')
+            break
         end_epoch_time = time.time() - start_epoch_time
         print('\n', '-----------------------------------------------------')
         print(f'End of epoch {epoch}')
@@ -233,12 +240,6 @@ def main():
         print('Epoch time: {:.2f}'.format(end_epoch_time))
         print('--------------------------------------------------------', '\n')
         total_time += end_epoch_time
-        if val_score > ap_min:
-           print('Save model in{}'.format(Save_path))
-           save_to_checkpoint(Save_path , epoch, model_gpu['decoder'], optimizer, scheduler, verbose=True)
-           ap_min = val_score
-        else:
-              print('Not save model, since the score is not improved')
     print('\n', '**************************************************************')
     print(f'End training at epoch {end_epoch}')
     print('total time: {:.2f}'.format(total_time))
