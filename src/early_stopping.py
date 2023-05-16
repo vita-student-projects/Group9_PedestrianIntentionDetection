@@ -38,15 +38,15 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            self.save_checkpoint(val_loss, model, optimizer, epoch)
+            self.save_checkpoint(score, model, optimizer, epoch)
             self.counter = 0
 
-    def save_checkpoint(self, val_loss, model, optimizer, epoch):
+    def save_checkpoint(self, score, model, optimizer, epoch):
         """
         Saves model when validation loss decrease.
         """
         if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            print(f'Validation score changed  ({self.best_score:.6f} --> {score:.6f}).  Saving model ...')
 
         torch.save({
             'epoch': epoch,
@@ -54,7 +54,5 @@ class EarlyStopping:
             'decoder_state_dict': model['decoder'].state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': val_loss,
-            'wandb_run_id': self.run_id,
             }, self.checkpoint)
         
-        self.val_loss_min = val_loss
