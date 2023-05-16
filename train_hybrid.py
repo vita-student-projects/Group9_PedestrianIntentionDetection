@@ -88,7 +88,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         # record loss
         optimizer.zero_grad()
         curr_loss = loss.item()
-        wandb.log({'train/loss': curr_loss, step=epoch * n_steps + step})
+        wandb.log({'train/loss': curr_loss}, step=epoch * n_steps + step)
         epoch_loss += curr_loss
         # compute gradient and do SGD step, scheduler step
         loss.backward()
@@ -128,7 +128,7 @@ def val_epoch(loader, model, criterion, device, epoch):
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
-        wandb.log({'val/loss': curr_loss, step=epoch * n_steps + step})
+        wandb.log({'val/loss': curr_loss}, step=epoch * n_steps + step)
         epoch_loss += curr_loss
         for j in range(targets.size()[0]):
             y_true.append(int(targets[j].item()))
