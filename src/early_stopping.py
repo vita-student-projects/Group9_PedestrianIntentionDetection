@@ -20,13 +20,10 @@ class EarlyStopping:
         self.counter = 0
         self.best_score = None if min_loss == torch.inf else  -min_loss
         self.early_stop = False
-        self.val_loss_min = min_loss
         self.delta = delta
         self.checkpoint = checkpoint
 
-    def __call__(self, val_loss, model, optimizer, epoch):
-
-        score = -val_loss
+    def __call__(self, score, model, optimizer, epoch):
 
         if self.best_score is None:
             self.best_score = score
@@ -53,6 +50,6 @@ class EarlyStopping:
             'encoder_state_dict': model['encoder'].state_dict(),
             'decoder_state_dict': model['decoder'].state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'loss': val_loss,
+            'score': score,
             }, self.checkpoint)
         
