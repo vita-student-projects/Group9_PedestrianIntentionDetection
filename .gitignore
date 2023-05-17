@@ -2,4 +2,3 @@
 *.png
 /checkpoints
 DATA/
-/wandb
