@@ -257,7 +257,7 @@ def main():
         train_loss = train_epoch(train_loader, model, criterion, optimizer, device, epoch)
         val_loss, val_score = val_epoch(val_loader, model, criterion, device, epoch)
         scheduler.step(val_score)
-        early_stopping(-val_score, model, optimizer, epoch)
+        early_stopping(val_score, model, optimizer, epoch)
         if early_stopping.early_stop:
             print(f'Early stopping after {epoch} epochs...')
             break
