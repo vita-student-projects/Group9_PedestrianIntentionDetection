@@ -41,6 +41,7 @@ def define_path(use_jaad=True, use_pie=True, use_titan=True):
                      'PIE': '/work/vita/datasets/PIE/images/',
                      'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
                      }
+    
     # Uncomment it when running on Jessica's computer
     # change from JAAD anns: 'TransNet/DATA/JAAD_DATA.pkl' to 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
     # change from JAAD split: '/work/vita/datasets/JAAD/split_ids/' to 'DATA/annotations/JAAD/splits'
