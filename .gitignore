@@ -1,5 +1,5 @@
 *__pycache__*
 *.png
-/checkpoints
+checkpoints/
 DATA/
-/wandb
+wandb/
