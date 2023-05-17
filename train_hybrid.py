@@ -2,15 +2,15 @@ import argparse
 import time
 import datetime
 from tqdm import tqdm
-from sklearn.metrics import average_precision_score
 from src.dataset.trans.data import *
 from src.dataset.loader import *
 from src.model.basenet import *
 from src.model.baselines import *
 from src.model.models import *
 from src.transform.preprocess import *
-from src.utils import *
-from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
+from src.utils import count_parameters
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
+from sklearn.metrics import classification_report, f1_score, average_precision_score
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
@@ -73,15 +73,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     epoch_loss = 0.0
     n_steps = len(loader)
     for step, inputs in enumerate(tqdm(loader)):
-        targets = inputs['label'].to(device, non_blocking=True)
-        images = inputs['image'].to(device, non_blocking=True)
-        bboxes_ped = inputs['bbox_ped']
-        seq_len = inputs['seq_length']
-        behavior = inputs['behavior'].to(device, non_blocking=True)
-        scene = inputs['attributes'].to(device, non_blocking=True)
-        bbox_ped_list = reshape_bbox(bboxes_ped, device)
-        pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
-
+        images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         loss = criterion(outputs_RNN, targets.view(-1, 1))
@@ -99,12 +91,11 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
 
 @torch.no_grad()
 def val_epoch(loader, model, criterion, device, epoch):
-    # swith to evaluate mode
-    encoder_CNN = model['encoder']
-    decoder_RNN = model['decoder']
-    # freeze CNN-encoder 
+    encoder_CNN, decoder_RNN = model['encoder'], model['decoder']
+    # switch to evaluate mode 
     encoder_CNN.eval()
     decoder_RNN.eval()
+
     epoch_loss = 0.0
     n_p, n_n = 0.0, 0.0
     n_tp, n_tn = 0.0, 0.0
@@ -114,14 +105,7 @@ def val_epoch(loader, model, criterion, device, epoch):
 
     n_steps = len(loader)
     for step, inputs in enumerate(tqdm(loader)):
-        targets = inputs['label'].to(device, non_blocking=True)
-        images = inputs['image'].to(device, non_blocking=True)
-        bboxes_ped = inputs['bbox_ped']
-        seq_len = inputs['seq_length']
-        behavior = inputs['behavior'].to(device, non_blocking=True)
-        scene = inputs['attributes'].to(device, non_blocking=True)
-        bbox_ped_list = reshape_bbox(bboxes_ped, device)
-        pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
+        images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
 
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
@@ -160,6 +144,60 @@ def val_epoch(loader, model, criterion, device, epoch):
     return epoch_loss / len(loader), val_score
 
 
+@torch.no_grad()
+def eval_model(loader, model, device):
+    # swith to evaluate mode
+    encoder_CNN, decoder_RNN = model['encoder'], model['decoder']
+    encoder_CNN.eval()
+    decoder_RNN.eval()
+
+    y_true = []
+    y_pred = []
+    y_out = []
+    scores = []
+
+    for i, inputs in enumerate(tqdm(loader)):
+        images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
+        outputs_CNN = encoder_CNN(images, seq_len)
+        outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, 
+                                    xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
+        for j in range(targets.size()[0]):
+            y_true.append(int(targets[j].item()))
+            y_out.append(float(outputs_RNN[j].item()))
+            score = 1.0 - abs(float(outputs_RNN[j].item()) - float(targets[j].item()))
+            scores.append(score)
+            if outputs_RNN[j] >= 0.5:
+                y_pred.append(1)
+            else:
+                y_pred.append(0)
+                
+    np_scores = np.array(scores)
+    scores_mean = np.mean(np_scores)
+    AP  = average_precision_score(y_true, y_out)
+    f1 = f1_score(y_true, y_pred)
+    wandb.log({'test/AP': AP, 'test/score': scores_mean, 'test/f1': f1})
+    print(classification_report(y_true, y_pred))
+    print(f"average precision for transition prediction: {AP}")
+    return  scores_mean
+
+def prepare_data(anns_paths, image_dir, args, image_set):
+    intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set=image_set, fps=args.fps, prediction_frames=args.pred, verbose=True)
+    balance = False if image_set == "test" else True
+    intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
+
+    jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
+    crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
+    if image_set == 'train':
+        TRANSFORM = Compose([crop_preprocess,
+                               ImageTransform(torchvision.transforms.ColorJitter(
+                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
+                               ])
+    else:
+        TRANSFORM = crop_preprocess
+    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
+    return ds
+
+
 def main():
     args = get_args()
     wandb.init(
@@ -172,11 +210,9 @@ def main():
     print('------------------------------------------------------------------')
     anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
 
-    train_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    train_intent_sequences_cropped = subsample_and_balance(train_intent_sequences,balance=True, max_frames=args.max_frames,seed=args.seed)
-    
-    val_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "val", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    val_intent_sequences_cropped = subsample_and_balance(val_intent_sequences,balance=True, max_frames=args.max_frames,seed=args.seed)
+    train_ds = prepare_data(anns_paths, image_dir, args, "train")
+    val_ds = prepare_data(anns_paths, image_dir, args, "val")
+    test_ds = prepare_data(anns_paths, image_dir, args, "test")
     
     print('------------------------------------------------------------------')
     print('Finish annotation loading', '\n')
@@ -188,27 +224,19 @@ def main():
 
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
+    
+    print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     crnn_params = list(encoder_res18.fc.parameters()) + list(decoder_lstm.parameters())
     optimizer = torch.optim.Adam(crnn_params, lr=args.lr, weight_decay=args.wd)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
-    start_epoch = 0
-    end_epoch = start_epoch + args.epochs
-    # start training
-    jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
-    crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
-    TRAIN_TRANSFORM = Compose([crop_preprocess,
-                               ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
-                               ])
-    VAL_TRANSFORM = crop_preprocess
-    train_ds = IntentionSequenceDataset(train_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRAIN_TRANSFORM)
-    val_ds = IntentionSequenceDataset(val_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=VAL_TRANSFORM)
+
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
+
     ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
@@ -219,10 +247,12 @@ def main():
         cp_dir = Path(f'./checkpoints/{run_name}')
         cp_dir.mkdir(parents=True, exist_ok=True)
         save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
-        early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)
     else:
-        Save_path = args.output
-    for epoch in range(start_epoch, end_epoch):
+        save_path = args.output
+    early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)
+
+    # start training
+    for epoch in range(args.epochs):
         start_epoch_time = time.time()
         train_loss = train_epoch(train_loader, model, criterion, optimizer, device, epoch)
         val_loss, val_score = val_epoch(val_loader, model, criterion, device, epoch)
@@ -236,13 +266,23 @@ def main():
         print(f'End of epoch {epoch}')
         print('Training epoch loss: {:.4f}'.format(train_loss))
         print('Validation epoch loss: {:.4f}'.format(val_loss))
-        print('Validation epoch score: {:.4f}'.format(val_score))
+        print('Validation epoch score (AP): {:.4f}'.format(val_score))
         print('Epoch time: {:.2f}'.format(end_epoch_time))
         print('--------------------------------------------------------', '\n')
         total_time += end_epoch_time
     print('\n', '**************************************************************')
-    print(f'End training at epoch {end_epoch}')
+    print(f'End training at epoch {epoch}')
     print('total time: {:.2f}'.format(total_time))
+
+    
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False)
+    print(f'Test loader : {len(test_loader)}')
+    print(f'Start evaluation on test set, jitter={args.jitter_ratio}')
+    test_score = eval_model(test_loader, model, device)
+    print('\n', '-----------------------------------------------------')
+    print('----->')
+    print('Model Evaluation score: {:.4f}'.format(test_score))
+    print('--------------------------------------------------------', '\n')
 
 
 

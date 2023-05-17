@@ -5,6 +5,7 @@ import copy
 import random
 from src.dataset.trans.jaad_trans import get_split_vids, get_pedb_ids_jaad
 from collections import Counter
+from src.utils import reshape_bbox, bbox_to_pv
 
 JAAD_BASE_FPS = 30
 MAX_FRAMES = 5
@@ -197,3 +198,14 @@ class JaadIntentionDataset:
         pid = self.pids[idx]
         return self.dataset[pid]
 
+
+def unpack_batch(batch, device):
+    targets = batch['label'].to(device, non_blocking=True)
+    images = batch['image'].to(device, non_blocking=True)
+    bboxes_ped = batch['bbox_ped']
+    seq_len = batch['seq_length']
+    behavior = batch['behavior'].to(device, non_blocking=True)
+    scene = batch['attributes'].to(device, non_blocking=True)
+    bbox_ped_list = reshape_bbox(bboxes_ped, device)
+    pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
+    return images, seq_len, pv, scene, behavior, targets

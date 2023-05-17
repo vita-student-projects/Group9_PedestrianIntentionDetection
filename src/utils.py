@@ -119,8 +119,10 @@ def bbox_to_pv(bbox_list):
 
 
 def reshape_anns(anns_list, device):
-    new_anns_list = []
     for i, ann in enumerate(anns_list):
         anns_list[i] = ann.to(device, non_blocking=True)
     return anns_list
 
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
