@@ -36,6 +36,7 @@ class CNNEncoder(nn.Module):
         x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
         return x_padded
 
+
 class Res18CropEncoder(CNNEncoder):
     def __init__(self, resnet, CNN_embed_dim=256):
         super().__init__()
