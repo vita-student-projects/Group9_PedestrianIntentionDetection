@@ -56,6 +56,21 @@ def define_path(use_jaad=True, use_pie=True, use_titan=True):
     #                  'PIE': '/work/vita/datasets/PIE/images/',
     #                  'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
     #                  }
+
+    # Uncomment it when running on Arina's computer
+    # change from JAAD anns: 'TransNet/DATA/JAAD_DATA.pkl' to 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
+    # change from JAAD split: '/work/vita/datasets/JAAD/split_ids/' to 'DATA/annotations/JAAD/splits'
+    #all_anns_paths = {'JAAD': {'anns': 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl',
+    #                            'split': 'DATA/annotations/JAAD/splits'},
+    #                   'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
+    #                   'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
+    #                            'split': '/work/vita/datasets/TITAN/splits/'}
+    #                   }
+
+    #all_image_dir = {'JAAD': 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images',
+    #                  'PIE': '/work/vita/datasets/PIE/images/',
+    #                  'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
+    #                  }
     anns_paths = {}
     image_dir = {}
     if use_jaad:

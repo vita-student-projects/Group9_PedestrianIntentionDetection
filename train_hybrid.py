@@ -11,10 +11,10 @@ from src.model.models import *
 from src.transform.preprocess import *
 from src.utils import *
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
-from src.dataset.intention.jaad_dataset import JaadIntentionDataset
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
+from src.early_stopping import EarlyStopping
 
 
 def get_args():
@@ -63,17 +63,18 @@ def get_args():
                         help='use mobilenet small or not')
     parser.add_argument('--mobilenetbig', default=False, action='store_true',
                         help='use mobilenet big or not')
+    parser.add_argument('--early-stopping-patience', default=3, type=int,)
+
     args = parser.parse_args()
 
     return args
 
 
 def train_epoch(loader, model, criterion, optimizer, device, epoch):
-
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
-    # freeze CNN-encoder during training
-    encoder_CNN.eval()
+
+    encoder_CNN.train()
     decoder_RNN.train()
     epoch_loss = 0.0
     n_steps = len(loader)
@@ -86,14 +87,14 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         scene = inputs['attributes'].to(device, non_blocking=True)
         bbox_ped_list = reshape_bbox(bboxes_ped, device)
         pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
-        with torch.no_grad():
-            outputs_CNN = encoder_CNN(images, seq_len)
+
+        outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         # record loss
         optimizer.zero_grad()
         curr_loss = loss.item()
-        wandb.log({'train/loss': curr_loss, 'train/step': epoch * n_steps + step})
+        wandb.log({'train/loss': curr_loss}, step=epoch * n_steps + step)
         epoch_loss += curr_loss
         # compute gradient and do SGD step, scheduler step
         loss.backward()
@@ -133,12 +134,12 @@ def val_epoch(loader, model, criterion, device, epoch):
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
-        wandb.log({'val/loss': curr_loss, 'val/step': epoch * n_steps + step})
+        wandb.log({'val/loss': curr_loss}, step=epoch * n_steps + step)
         epoch_loss += curr_loss
         for j in range(targets.size()[0]):
             y_true.append(int(targets[j].item()))
             y_pred.append(float(outputs_RNN[j].item()))
-            if targets[j] > 0.5:
+            if targets[j]:
                 n_p += 1
                 if outputs_RNN[j] >= 0.5:
                     n_tp += 1
@@ -189,6 +190,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # if set arg.'-mobilenet' to True：use mobilenet as encoder instead of resnet18 (even the name is encoder_res18 but inside it is mobilenet)
     encoder_res18 = build_encoder_res18(args)
+
     # get the amount of parameter for three differnt encoder
     # cnn_encoder + fc
     #   resnet18: 11307840
@@ -200,10 +202,11 @@ def main():
     #   mobile net large:246016
     total_params = sum(param.numel() for param in encoder_res18.parameters())
     print(f'encoder_res18 total parameters: {total_params}')
-
+    # freeze CNN-encoder during training
+    encoder_res18.freeze_backbone()
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
-    model_gpu = {'encoder': encoder_res18, 'decoder': decoder_lstm}
+    model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     crnn_params = list(encoder_res18.fc.parameters()) + list(decoder_lstm.parameters())
@@ -228,19 +231,24 @@ def main():
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
-    ap_min = 0.5
+
     print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, mf={args.max_frames}, training batch size={args.batch_size}')
     if args.output is None:
         cp_dir = Path(f'./checkpoints/{run_name}')
         cp_dir.mkdir(parents=True, exist_ok=True)
-        Save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}'
+        save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
+        early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)
     else:
         Save_path = args.output
     for epoch in range(start_epoch, end_epoch):
         start_epoch_time = time.time()
-        train_loss = train_epoch(train_loader, model_gpu, criterion, optimizer, device, epoch)
-        val_loss, val_score = val_epoch(val_loader, model_gpu, criterion, device, epoch)
+        train_loss = train_epoch(train_loader, model, criterion, optimizer, device, epoch)
+        val_loss, val_score = val_epoch(val_loader, model, criterion, device, epoch)
         scheduler.step(val_score)
+        early_stopping(val_score, model, optimizer, epoch)
+        if early_stopping.early_stop:
+            print(f'Early stopping after {epoch} epochs...')
+            break
         end_epoch_time = time.time() - start_epoch_time
         print('\n', '-----------------------------------------------------')
         print(f'End of epoch {epoch}')
@@ -250,12 +258,6 @@ def main():
         print('Epoch time: {:.2f}'.format(end_epoch_time))
         print('--------------------------------------------------------', '\n')
         total_time += end_epoch_time
-        if val_score > ap_min:
-           print('Save model in{}'.format(Save_path))
-           save_to_checkpoint(Save_path , epoch, model_gpu['decoder'], optimizer, scheduler, verbose=True)
-           ap_min = val_score
-        else:
-              print('Not save model, since the score is not improved')
     print('\n', '**************************************************************')
     print(f'End training at epoch {end_epoch}')
     print('total time: {:.2f}'.format(total_time))

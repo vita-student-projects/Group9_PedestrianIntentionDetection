@@ -22,8 +22,6 @@ def get_args():
                         help='use PIE dataset')
     parser.add_argument('--titan', default=False, action='store_true',
                         help='use TITAN dataset')
-    parser.add_argument('--mode', default='GO', type=str,
-                        help='transition mode, GO or STOP')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
     parser.add_argument('--max-frames', default=5, type=int,
@@ -117,7 +115,7 @@ def main():
     #                                       bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
     # train_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
     eval_intent_sequences = build_pedb_dataset_jaad(anns_paths_eval["JAAD"]["anns"], anns_paths_eval["JAAD"]["split"], image_set = "test", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    eval_intent_sequences_cropped = subsample_and_balance(eval_intent_sequences,balance=False, max_frames=args.max_frames,seed=args.seed)
+    eval_intent_sequences_cropped = subsample_and_balance(eval_intent_sequences, balance=False, max_frames=args.max_frames, seed=args.seed)
     print('------------------------------------------------------------------')
     print('Finish annotation loading', '\n')
 

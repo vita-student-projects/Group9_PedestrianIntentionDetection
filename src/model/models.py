@@ -8,11 +8,17 @@ from .baselines import *
 from ..utils import *
 
 
-class Res18CropEncoder(nn.Module):
+class CNNEncoder(nn.Module):
+    def freeze_backbone(self):
+        for child in self.backbone.children():
+            for para in child.parameters():
+                para.requires_grad = False
+
+class Res18CropEncoder(CNNEncoder):
     def __init__(self, resnet, CNN_embed_dim=256):
         super().__init__()
         
-        self.resnet = resnet
+        self.backbone = resnet
         self.fc = nn.Linear(512, CNN_embed_dim)
 
     @torch.no_grad()    
@@ -23,7 +29,7 @@ class Res18CropEncoder(nn.Module):
             cnn_embed_seq = []
             for t in range(x_lengths[i]):
                 img = x_5d[i, t, :, :, :]
-                x = self.resnet(torch.unsqueeze(img,dim=0))  # ResNet
+                x = self.backbone(torch.unsqueeze(img,dim=0))  # ResNet
                 x = self.fc(x)
                 x = F.relu(x)
                 x = x.view(x.size(0), -1) # flatten output of conv
@@ -73,7 +79,7 @@ class MobilenetCropEncoder(nn.Module):
         return x_padded
         
         
-class Res18RoIEncoder(nn.Module):
+class Res18RoIEncoder(CNNEncoder):
     """
     CNN-encoder with ResNet-18 backbone
     Input: a sequence of  RGB images Tx3xHxW (0<T<T_max)
@@ -82,7 +88,7 @@ class Res18RoIEncoder(nn.Module):
     def __init__(self, resnet, CNN_embed_dim=256):
         super().__init__()
         
-        self.resnet = resnet
+        self.backbone = resnet
         self.fc = nn.Linear(1024, CNN_embed_dim)
         
     @torch.no_grad()
@@ -110,7 +116,7 @@ class Res18RoIEncoder(nn.Module):
         return x_padded
 
 
-class DecoderRNN_IMBS(nn.Module):
+class DecoderRNN_IMBS(CNNEncoder):
     def __init__(self, CNN_embeded_size=256, h_RNN_layers=1, h_RNN_0=256, h_RNN_1=64,
                  h_RNN_2=16, h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2):
         super().__init__()
