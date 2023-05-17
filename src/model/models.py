@@ -43,13 +43,10 @@ class Res18CropEncoder(CNNEncoder):
         x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
         return x_padded
     
-#TODO: check with Arina:also freeze the backbone of the mobilenet? 
-# class MobilenetCropEncoder(nn.Module):
+
 class MobilenetCropEncoder(CNNEncoder):
     def __init__(self, mobilenet, CNN_embed_dim=256):
         super().__init__()
-        # TODO: check with Arina: don't we need to freeze also the backbone of the mobilenet?
-        # self.mobilenet = mobilenet
         self.backbone = mobilenet
         # in_features: get the input size of the classifier layer of original mobilenet v3
         in_features = self.backbone.classifier[0].in_features
