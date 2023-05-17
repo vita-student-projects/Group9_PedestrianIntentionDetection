@@ -43,40 +43,6 @@ class Res18CropEncoder(CNNEncoder):
         
         x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
         return x_padded
-    
-class MobilenetCropEncoder(nn.Module):
-    def __init__(self, mobilenet, CNN_embed_dim=256):
-        super().__init__()
-        
-        self.mobilenet = mobilenet
-        # in_features: get the input size of the classifier layer of original mobilenet v3
-        in_features = self.mobilenet.classifier[0].in_features
-        print('in_features: ', in_features, flush=True)
-        self.mobilenet.classifier = torch.nn.Identity()
-        self.fc = nn.Linear(in_features, CNN_embed_dim)
-
-    @torch.no_grad()    
-    def forward(self, x_5d, x_lengths):
-        x_seq = []
-        batch_size = x_5d.size(0)
-        for i in range(batch_size):
-            cnn_embed_seq = []
-            for t in range(x_lengths[i]):
-                img = x_5d[i, t, :, :, :]
-                x = self.mobilenet(torch.unsqueeze(img,dim=0))  # MobileNet
-                x = self.fc(x)
-                x = F.relu(x)
-                x = x.view(x.size(0), -1) # flatten output of conv
-                cnn_embed_seq.append(x)                    
-            # swap time and sample dim such that (sample dim=1, time dim, CNN latent dim)
-            embed_seq = torch.stack(cnn_embed_seq, dim=0).transpose_(0, 1)
-            embed_seq = torch.squeeze(embed_seq)
-            fea_dim = embed_seq.shape[-1]
-            embed_seq = embed_seq.view(-1,fea_dim)
-            x_seq.append(embed_seq)
-        
-        x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
-        return x_padded
         
         
 class Res18RoIEncoder(CNNEncoder):
@@ -227,30 +193,13 @@ def build_encoder_res18(args):
              _ = load_from_checkpoint(checkpoint_path, res18_cc_gpu, optimizer=None, scheduler=None, verbose=True)
              # remove fc
              res_modules = list(res18_cc_gpu.children())[:3]  # delete the last fc layer.
-             cnn_gpu = nn.Sequential(*res_modules)
-
+             res18_gpu = nn.Sequential(*res_modules)
         else:
-            if args.mobilenetsmall:
-                print('Using mobilenetv3 small as cnn encoder!!')
-                # small mobilev3 model
-                mobilev3_cpu = torchvision.models.mobilenet_v3_small(pretrained=True)
-                cnn_gpu = mobilev3_cpu.to(device)
-            elif args.mobilenetbig:
-                print('Using mobilenetv3 big as cnn encoder!!')
-                # big mobilev3 model
-                mobilev3_cpu = torchvision.models.mobilenet_v3_large(pretrained=True)
-                cnn_gpu = mobilev3_cpu.to(device)
-            else:
-                print('Using resnet18 cnn encoder!!')
-                res18_cpu = torchvision.models.resnet18(pretrained=True)
-                # remove last fc
-                res18_cpu.fc = torch.nn.Identity()
-                cnn_gpu = res18_cpu.to(device)
-
-        if args.mobilenetsmall or args.mobilenetbig:
-            encoder_cnn = MobilenetCropEncoder(mobilenet=cnn_gpu)
-        else:
-            encoder_cnn = Res18CropEncoder(resnet=cnn_gpu)
+            res18_cpu = torchvision.models.resnet18(pretrained=True)
+            # remove last fc
+            res18_cpu.fc = torch.nn.Identity()
+            res18_gpu = res18_cpu.to(device)
+        encoder_res18 = Res18CropEncoder(resnet=res18_gpu)
     else:
          if args.encoder_pretrained:
              res18 = ResnetBlocks(torchvision.models.resnet18(pretrained=False))
@@ -271,8 +220,8 @@ def build_encoder_res18(args):
          res18_roi_gpu.dropout = torch.nn.Identity()
          res18_roi_gpu.act = torch.nn.Identity()
          # encoder
-         encoder_cnn = Res18RoIEncoder(encoder=res18_roi_gpu)
-    encoder_cnn.to(device)
-    return encoder_cnn
+         encoder_res18 = Res18RoIEncoder(encoder=res18_roi_gpu)
+    encoder_res18.to(device)
+    return encoder_res18
 
 
