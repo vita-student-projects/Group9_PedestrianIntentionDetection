@@ -184,10 +184,10 @@ def build_encoder_res18(args):
                 cnn_gpu = mobilev3_cpu.to(device)
             else:
                 print('Using resnet18 cnn encoder!!')
-                res18_cpu = torchvision.models.resnet18(pretrained=True)
+                res18= torchvision.models.resnet18(pretrained=True)
                 # remove last fc
-                res18_cpu.fc = torch.nn.Identity()
-                cnn_gpu = res18_cpu.to(device)
+                res18.fc = torch.nn.Identity()
+                cnn_gpu = res18.to(device)
         if args.mobilenetsmall or args.mobilenetbig:
             encoder_cnn = MobilenetCropEncoder(mobilenet=cnn_gpu)
         else:
