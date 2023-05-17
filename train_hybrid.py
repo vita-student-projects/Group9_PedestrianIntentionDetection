@@ -279,7 +279,7 @@ def main():
     print('total time: {:.2f}'.format(total_time))
 
     
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False,num_workers=4)
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on test set, jitter={args.jitter_ratio}')
     test_score = eval_model(test_loader, model, device)
