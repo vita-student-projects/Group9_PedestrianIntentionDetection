@@ -171,7 +171,7 @@ def build_encoder_res18(args):
              res_modules = list(res18_cc.children())[:3]  # delete the last fc layer.
              res18 = nn.Sequential(*res_modules)
         else:
-            res18_ = torchvision.models.resnet18(pretrained=True)
+            res18 = torchvision.models.resnet18(pretrained=True)
             # remove last fc
             res18.fc = torch.nn.Identity()
             res18.to(device)
