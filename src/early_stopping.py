@@ -27,7 +27,9 @@ class EarlyStopping:
 
         if self.best_score is None:
             self.best_score = score
-            self.save_checkpoint(val_loss, model, optimizer, epoch)
+            # TODO: check with Arina what is val_loss here
+            # self.save_checkpoint(val_loss, model, optimizer, epoch)
+            self.save_checkpoint(score, model, optimizer, epoch)
         elif score < self.best_score + self.delta:
             self.counter += 1
             print(f'EarlyStopping counter: {self.counter} out of {self.patience}')

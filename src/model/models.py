@@ -44,17 +44,19 @@ class Res18CropEncoder(CNNEncoder):
         x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
         return x_padded
     
-class MobilenetCropEncoder(nn.Module):
+#TODO: check with Arina:also freeze the backbone of the mobilenet? 
+# class MobilenetCropEncoder(nn.Module):
+class MobilenetCropEncoder(CNNEncoder):
     def __init__(self, mobilenet, CNN_embed_dim=256):
         super().__init__()
-        
-        self.mobilenet = mobilenet
+        # TODO: check with Arina: don't we need to freeze also the backbone of the mobilenet?
+        # self.mobilenet = mobilenet
+        self.backbone = mobilenet
         # in_features: get the input size of the classifier layer of original mobilenet v3
-        in_features = self.mobilenet.classifier[0].in_features
-        print('in_features: ', in_features, flush=True)
-        self.mobilenet.classifier = torch.nn.Identity()
+        in_features = self.backbone.classifier[0].in_features
+        print('mobilenet fc in_features: ', in_features, flush=True)
+        self.backbone.classifier = torch.nn.Identity()
         self.fc = nn.Linear(in_features, CNN_embed_dim)
-
     @torch.no_grad()    
     def forward(self, x_5d, x_lengths):
         x_seq = []
@@ -63,7 +65,7 @@ class MobilenetCropEncoder(nn.Module):
             cnn_embed_seq = []
             for t in range(x_lengths[i]):
                 img = x_5d[i, t, :, :, :]
-                x = self.mobilenet(torch.unsqueeze(img,dim=0))  # MobileNet
+                x = self.backbone(torch.unsqueeze(img,dim=0))  # MobileNet
                 x = self.fc(x)
                 x = F.relu(x)
                 x = x.view(x.size(0), -1) # flatten output of conv
