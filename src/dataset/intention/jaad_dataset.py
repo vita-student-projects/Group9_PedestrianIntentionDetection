@@ -5,6 +5,7 @@ import copy
 import random
 from src.dataset.trans.jaad_trans import get_split_vids, get_pedb_ids_jaad
 from collections import Counter
+from src.utils import reshape_bbox, bbox_to_pv
 
 JAAD_BASE_FPS = 30
 MAX_FRAMES = 5
@@ -103,7 +104,8 @@ def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
         crossing_share /= len(frames) - prediction_frames
         # cut last prediction_frames frames
         for attribute in ['frames', 'bbox', 'action', 'occlusion', 'behavior', 'traffic_light']:
-            dataset[idx][attribute] = dataset[idx][attribute][:-prediction_frames]
+            if prediction_frames > 0:
+                dataset[idx][attribute] = dataset[idx][attribute][:-prediction_frames]
         dataset[idx].pop('cross')
         dataset[idx]['crossing_share'] = crossing_share
         
@@ -137,14 +139,14 @@ def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", su
     add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, verbose=verbose)
     return pedb_dataset
 
-def subsample_and_balance(intention_dataset,balance, max_frames=MAX_FRAMES, seed=SEED):
+def subsample_and_balance(intention_dataset, balance, max_frames=MAX_FRAMES, seed=SEED):
     random.seed(seed)
     new_samples = []
     all_labels = []
     for ped_id in intention_dataset:
         n_frames = len(intention_dataset[ped_id]['frames'])
         # add this to remove the sample which has no label (len(frames) <= prediction_frames in function add_cross_label_jaad)
-        if len(intention_dataset[ped_id]['labels'])==0:
+        if len(intention_dataset[ped_id]['labels']) == 0:
             continue
         for i in range(n_frames - max_frames):
             new_sample = {}
@@ -196,3 +198,14 @@ class JaadIntentionDataset:
         pid = self.pids[idx]
         return self.dataset[pid]
 
+
+def unpack_batch(batch, device):
+    targets = batch['label'].to(device, non_blocking=True)
+    images = batch['image'].to(device, non_blocking=True)
+    bboxes_ped = batch['bbox_ped']
+    seq_len = batch['seq_length']
+    behavior = batch['behavior'].to(device, non_blocking=True)
+    scene = batch['attributes'].to(device, non_blocking=True)
+    bbox_ped_list = reshape_bbox(bboxes_ped, device)
+    pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
+    return images, seq_len, pv, scene, behavior, targets
