@@ -78,7 +78,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
 
     n_steps = len(loader)
     batch_size = loader.batch_size
-    
+
     preds = np.zeros(n_steps * batch_size)
     tgts = np.zeros(n_steps * batch_size)
     for step, inputs in enumerate(tqdm(loader)):
@@ -87,8 +87,8 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         loss = criterion(outputs_RNN, targets.view(-1, 1))
 
-        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu()
-        targets[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu()
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().squeeze()
+        tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
         # record loss
         optimizer.zero_grad()
@@ -99,7 +99,6 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-    preds, tgts = preds.numpy(), tgts.numpy()
     train_score = average_precision_score(targets, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(targets, preds > best_thr)
@@ -129,15 +128,14 @@ def val_epoch(loader, model, criterion, device, epoch):
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
 
-        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu()
-        targets[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu()
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().squeeze()
+        targets[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
         wandb.log({'val/loss': curr_loss}, step=epoch * n_steps + step)
         epoch_loss += curr_loss
 
-    preds, tgts = preds.numpy(), tgts.numpy()
     best_thr, best_f1 = find_best_threshold(preds, targets)
     decoder_RNN.threshold = best_thr
 
@@ -167,10 +165,9 @@ def eval_model(loader, model, device):
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, 
                                     xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         
-        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu()
-        tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu()
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().squeeze()
+        tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
-    preds, tgts = preds.numpy(), tgts.numpy()
     train_score = average_precision_score(targets, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(targets, preds > best_thr)
