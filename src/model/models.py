@@ -170,13 +170,28 @@ def build_encoder_res18(args):
              _ = load_from_checkpoint(checkpoint_path, res18_cc, optimizer=None, scheduler=None, verbose=True)
              # remove fc
              res_modules = list(res18_cc.children())[:3]  # delete the last fc layer.
-             res18 = nn.Sequential(*res_modules)
+             cnn_gpu = nn.Sequential(*res_modules)
         else:
-            res18 = torchvision.models.resnet18(pretrained=True)
-            # remove last fc
-            res18.fc = torch.nn.Identity()
-            res18.to(device)
-        encoder_res18 = Res18CropEncoder(resnet=res18)
+            if args.mobilenetsmall:
+                print('Using mobilenetv3 small as cnn encoder!!')
+                # small mobilev3 model
+                mobilev3_cpu = torchvision.models.mobilenet_v3_small(pretrained=True)
+                cnn_gpu = mobilev3_cpu.to(device)
+            elif args.mobilenetbig:
+                print('Using mobilenetv3 big as cnn encoder!!')
+                # big mobilev3 model
+                mobilev3_cpu = torchvision.models.mobilenet_v3_large(pretrained=True)
+                cnn_gpu = mobilev3_cpu.to(device)
+            else:
+                print('Using resnet18 cnn encoder!!')
+                res18_cpu = torchvision.models.resnet18(pretrained=True)
+                # remove last fc
+                res18_cpu.fc = torch.nn.Identity()
+                cnn_gpu = res18_cpu.to(device)
+        if args.mobilenetsmall or args.mobilenetbig:
+            encoder_cnn = MobilenetCropEncoder(mobilenet=cnn_gpu)
+        else:
+            encoder_cnn = Res18CropEncoder(resnet=cnn_gpu)
     else:
          if args.encoder_pretrained:
              res18 = ResnetBlocks(torchvision.models.resnet18(pretrained=False))
@@ -197,8 +212,8 @@ def build_encoder_res18(args):
          res18_roi.dropout = torch.nn.Identity()
          res18_roi.act = torch.nn.Identity()
          # encoder
-         encoder_res18 = Res18RoIEncoder(encoder=res18_roi)
-    encoder_res18.to(device)
-    return encoder_res18
+         encoder_cnn = Res18RoIEncoder(encoder=res18_roi)
+    encoder_cnn.to(device)
+    return encoder_cnn
 
 
