@@ -26,8 +26,8 @@ class EarlyStopping:
     def __call__(self, score, model, optimizer, epoch):
 
         if self.best_score is None:
-            self.best_score = score
             self.save_checkpoint(score, model, optimizer, epoch)
+            self.best_score = score
         elif score < self.best_score + self.delta:
             self.counter += 1
             print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
