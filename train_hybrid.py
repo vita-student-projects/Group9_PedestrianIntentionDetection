@@ -58,13 +58,7 @@ def get_args():
                         help='Weight decay', dest='wd')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
-    
-    parser.add_argument('--mobilenetsmall', default=False, action='store_true',
-                        help='use mobilenet small or not')
-    parser.add_argument('--mobilenetbig', default=False, action='store_true',
-                        help='use mobilenet big or not')
     parser.add_argument('--early-stopping-patience', default=3, type=int,)
-
     args = parser.parse_args()
 
     return args
@@ -188,22 +182,10 @@ def main():
     print('Finish annotation loading', '\n')
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # if set arg.'-mobilenet' to True：use mobilenet as encoder instead of resnet18 (even the name is encoder_res18 but inside it is mobilenet)
     encoder_res18 = build_encoder_res18(args)
-
-    # get the amount of parameter for three differnt encoder
-    # cnn_encoder + fc
-    #   resnet18: 11307840
-    #   mobile net small:1074720
-    #   mobile net large:3217968
-    # fc
-    #   resnet18:131328
-    #   mobile net small:147712
-    #   mobile net large:246016
-    total_params = sum(param.numel() for param in encoder_res18.parameters())
-    print(f'encoder_res18 total parameters: {total_params}')
     # freeze CNN-encoder during training
     encoder_res18.freeze_backbone()
+
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
     model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
@@ -225,8 +207,8 @@ def main():
     train_ds = IntentionSequenceDataset(train_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRAIN_TRANSFORM)
     val_ds = IntentionSequenceDataset(val_intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=VAL_TRANSFORM)
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True)
-    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
     ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
