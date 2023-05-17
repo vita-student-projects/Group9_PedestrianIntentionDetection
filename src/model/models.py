@@ -65,6 +65,30 @@ class Res18RoIEncoder(CNNEncoder):
         
         self.backbone = resnet
         self.fc = nn.Linear(1024, CNN_embed_dim)
+        
+    @torch.no_grad()
+    def forward(self, x_5d, x_lengths):
+        x_seq = []
+        for i in range(x_5d.size(0)):
+            cnn_embed_seq = []
+            for t in range(x_lengths[i]):
+                img = x_5d[i, t, :, :, :]
+                x = self.resnet(torch.unsqueeze(img,dim=0))  # ResNet
+                x = self.fc(x)
+                x = F.relu(x)
+                x = x.view(x.size(0), -1) # flatten output of conv
+                cnn_embed_seq.append(x)                    
+            # swap time and sample dim such that (sample dim=1, time dim, CNN latent dim)
+            embed_seq = torch.stack(cnn_embed_seq, dim=0).transpose_(0, 1)
+            embed_seq = torch.squeeze(embed_seq)
+            fea_dim = embed_seq.shape[-1]
+            embed_seq = embed_seq.view(-1,fea_dim)
+            x_seq.append(embed_seq)
+        
+        x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
+        
+        
+        return x_padded
 
 
 class DecoderRNN_IMBS(nn.Module):
