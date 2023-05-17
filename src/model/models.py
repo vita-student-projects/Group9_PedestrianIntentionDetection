@@ -20,8 +20,7 @@ class Res18CropEncoder(CNNEncoder):
         
         self.backbone = resnet
         self.fc = nn.Linear(512, CNN_embed_dim)
-
-    @torch.no_grad()    
+  
     def forward(self, x_5d, x_lengths):
         x_seq = []
         batch_size = x_5d.size(0)
@@ -57,7 +56,7 @@ class MobilenetCropEncoder(CNNEncoder):
         print('mobilenet fc in_features: ', in_features, flush=True)
         self.backbone.classifier = torch.nn.Identity()
         self.fc = nn.Linear(in_features, CNN_embed_dim)
-    @torch.no_grad()    
+   
     def forward(self, x_5d, x_lengths):
         x_seq = []
         batch_size = x_5d.size(0)
@@ -93,7 +92,7 @@ class Res18RoIEncoder(CNNEncoder):
         self.backbone = resnet
         self.fc = nn.Linear(1024, CNN_embed_dim)
         
-    @torch.no_grad()
+    # @torch.no_grad()
     def forward(self, x_5d, x_lengths):
         x_seq = []
         for i in range(x_5d.size(0)):
