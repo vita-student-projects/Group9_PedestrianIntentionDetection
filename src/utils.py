@@ -1,7 +1,8 @@
 import torch
 import sys
 import os
-
+import numpy as np
+from sklearn.metrics import f1_score
 
 def save_to_checkpoint(save_path, epoch, model, optimizer, scheduler=None, verbose=True):
     # save checkpoint to disk
@@ -126,3 +127,15 @@ def reshape_anns(anns_list, device):
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def find_best_threshold(preds, targets):
+    best_f1 = 0
+    best_thr = None
+    for thr in np.linspace(0, 1, 10):
+        preds_thr = (preds > thr).astype(int)
+        f1 = f1_score(targets, preds_thr)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_thr = thr
+    return best_thr, best_f1

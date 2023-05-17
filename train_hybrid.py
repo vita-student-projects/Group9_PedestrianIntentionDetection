@@ -8,9 +8,9 @@ from src.model.basenet import *
 from src.model.baselines import *
 from src.model.models import *
 from src.transform.preprocess import *
-from src.utils import count_parameters
+from src.utils import count_parameters, find_best_threshold
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
-from sklearn.metrics import classification_report, f1_score, average_precision_score
+from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
@@ -76,11 +76,15 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     decoder_RNN.train()
     epoch_loss = 0.0
     n_steps = len(loader)
+
+    batch_size = loader.batch_size
+    preds = np.zeros((len(loader.dataset) * batch_size))
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         loss = criterion(outputs_RNN, targets.view(-1, 1))
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.cpu().numpy().flatten()
         # record loss
         optimizer.zero_grad()
         curr_loss = loss.item()
@@ -89,6 +93,12 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         # compute gradient and do SGD step, scheduler step
         loss.backward()
         optimizer.step()
+
+
+    train_score = average_precision_score(targets, preds)
+    best_thr = decoder_RNN.threshold
+    f1 = f1_score(targets, preds > best_thr)
+    log_metrics(targets, preds, best_thr, f1, train_score, 'train')
 
     return epoch_loss / len(loader)
 
@@ -101,49 +111,33 @@ def val_epoch(loader, model, criterion, device, epoch):
     decoder_RNN.eval()
 
     epoch_loss = 0.0
-    n_p, n_n = 0.0, 0.0
-    n_tp, n_tn = 0.0, 0.0
-
-    y_true = []
-    y_pred = []
 
     n_steps = len(loader)
+    batch_size = loader.batch_size
+
+    preds = np.zeros(n_steps * batch_size)
+    targets = np.zeros(n_steps * batch_size)
+
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
 
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
 
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.cpu().numpy().flatten()
+        targets[step * batch_size: (step + 1) * batch_size] = targets.cpu().numpy().flatten()
+
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
         wandb.log({'val/loss': curr_loss}, step=epoch * n_steps + step)
         epoch_loss += curr_loss
-        for j in range(targets.size()[0]):
-            y_true.append(int(targets[j].item()))
-            y_pred.append(float(outputs_RNN[j].item()))
-            if targets[j]:
-                n_p += 1
-                if outputs_RNN[j] >= 0.5:
-                    n_tp += 1
-            else:
-                n_n += 1
-                if outputs_RNN[j] < 0.5:
-                    n_tn += 1
 
-    AP_P = average_precision_score(y_true, y_pred)
-    FP = n_n - n_tn
-    precision_P = n_tp / (n_tp + FP) if n_tp + FP > 0 else 0.0
-    recall_P = n_tp / n_p
-    f1_p = 2 * (precision_P * recall_P) / (precision_P + recall_P) if precision_P + recall_P > 0 else 0.0
-    wandb.log({'val/precision': precision_P , 'val/recall': recall_P, 'val/f1': f1_p, 'val/AP': AP_P})
-    
-    print('------------------------------------------------')
-    print(f'precision: {precision_P}')
-    print(f'recall: {n_tp / n_p}')
-    print(f'F1-score : {f1_p}')
-    print(f"average precision for transition prediction: {AP_P}")
-    print('\n')
-    val_score = AP_P
+
+    best_thr, best_f1 = find_best_threshold(preds, targets)
+    decoder_RNN.threshold = best_thr
+
+    val_score = average_precision_score(targets, preds)
+    log_metrics(targets, preds, best_thr, best_f1, val_score, 'val')
 
     return epoch_loss / len(loader), val_score
 
@@ -155,34 +149,48 @@ def eval_model(loader, model, device):
     encoder_CNN.eval()
     decoder_RNN.eval()
 
-    y_true = []
-    y_pred = []
-    y_out = []
-    scores = []
 
-    for i, inputs in enumerate(tqdm(loader)):
+    batch_size = loader.batch_size
+    n_steps = len(loader)
+
+    preds = np.zeros(n_steps * batch_size)
+    targets = np.zeros(n_steps * batch_size)
+
+    for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, 
                                     xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
-        for j in range(targets.size()[0]):
-            y_true.append(int(targets[j].item()))
-            y_out.append(float(outputs_RNN[j].item()))
-            score = 1.0 - abs(float(outputs_RNN[j].item()) - float(targets[j].item()))
-            scores.append(score)
-            if outputs_RNN[j] >= 0.5:
-                y_pred.append(1)
-            else:
-                y_pred.append(0)
-                
-    np_scores = np.array(scores)
-    scores_mean = np.mean(np_scores)
-    AP  = average_precision_score(y_true, y_out)
-    f1 = f1_score(y_true, y_pred)
-    wandb.log({'test/AP': AP, 'test/score': scores_mean, 'test/f1': f1})
-    print(classification_report(y_true, y_pred))
-    print(f"average precision for transition prediction: {AP}")
-    return  scores_mean
+        
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.cpu().numpy().flatten()
+        targets[step * batch_size: (step + 1) * batch_size] = targets.cpu().numpy().flatten()
+
+    train_score = average_precision_score(targets, preds)
+    best_thr = decoder_RNN.threshold
+    f1 = f1_score(targets, preds > best_thr)
+    log_metrics(targets, preds, best_thr, f1, train_score, 'test')
+
+    print(classification_report(targets, preds))
+
+
+
+def log_metrics(targets, preds, best_thr, best_f1, ap, mode):
+    preds = (preds > best_thr).astype(int)
+    precision = precision_score(targets, preds)
+    recall = recall_score(targets, preds)
+
+    wandb.log({f'{mode}/precision': precision , f'{mode}/recall': recall, f'{mode}/f1': best_f1, f'{mode}/AP': ap, f'{mode}/best_thr': best_thr})
+    wandb.log({f"{mode}/preds": wandb.plot.histogram(preds, title=f"{mode}/preds")})
+    
+    print('------------------------------------------------')
+    print(f'Mode: {mode}')
+    print(f'best threshold: {best_thr}')
+    print(f'precision: {precision}')
+    print(f'recall: {recall}')
+    print(f'F1-score : {best_f1}')
+    print(f"average precision for transition prediction: {ap}")
+    print('\n')
+
 
 def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set=image_set, fps=args.fps, prediction_frames=args.pred, verbose=True)
