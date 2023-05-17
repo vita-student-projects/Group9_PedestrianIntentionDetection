@@ -99,10 +99,10 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-    train_score = average_precision_score(targets, preds)
+    train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
-    f1 = f1_score(targets, preds > best_thr)
-    log_metrics(targets, preds, best_thr, f1, train_score, 'train')
+    f1 = f1_score(tgts, preds > best_thr)
+    log_metrics(tgts, preds, best_thr, f1, train_score, 'train')
 
     return epoch_loss / len(loader)
 
@@ -129,18 +129,18 @@ def val_epoch(loader, model, criterion, device, epoch):
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
 
         preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().squeeze()
-        targets[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
+        tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
         wandb.log({'val/loss': curr_loss}, step=epoch * n_steps + step)
         epoch_loss += curr_loss
 
-    best_thr, best_f1 = find_best_threshold(preds, targets)
+    best_thr, best_f1 = find_best_threshold(preds, tgts)
     decoder_RNN.threshold = best_thr
 
-    val_score = average_precision_score(targets, preds)
-    log_metrics(targets, preds, best_thr, best_f1, val_score, 'val')
+    val_score = average_precision_score(tgts, preds)
+    log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val')
 
     return epoch_loss / len(loader), val_score
 
@@ -168,12 +168,13 @@ def eval_model(loader, model, device):
         preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
-    train_score = average_precision_score(targets, preds)
+    train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
-    f1 = f1_score(targets, preds > best_thr)
-    log_metrics(targets, preds, best_thr, f1, train_score, 'test')
+    f1 = f1_score(tgts, preds > best_thr)
+    log_metrics(tgts, preds, best_thr, f1, train_score, 'test')
+    preds = preds > best_thr
 
-    print(classification_report(targets, preds))
+    print(classification_report(tgts, preds))
 
 
 
@@ -183,7 +184,7 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode):
     recall = recall_score(targets, preds)
 
     wandb.log({f'{mode}/precision': precision , f'{mode}/recall': recall, f'{mode}/f1': best_f1, f'{mode}/AP': ap, f'{mode}/best_thr': best_thr})
-    wandb.log({f"{mode}/preds": wandb.plot.histogram(preds, title=f"{mode}/preds")})
+    wandb.log({f"{mode}/preds": wandb.Histogram(preds)})
     
     print('------------------------------------------------')
     print(f'Mode: {mode}')
@@ -249,7 +250,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
     ds = 'JAAD'
