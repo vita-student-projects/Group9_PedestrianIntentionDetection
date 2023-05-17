@@ -78,13 +78,17 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     n_steps = len(loader)
 
     batch_size = loader.batch_size
-    preds = np.zeros((len(loader.dataset) * batch_size))
+    preds = np.zeros(n_steps * batch_size)
+    targets = np.zeros(n_steps * batch_size)
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         loss = criterion(outputs_RNN, targets.view(-1, 1))
-        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.cpu().numpy().flatten()
+
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().numpy().flatten()
+        targets[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().numpy().flatten()
+        
         # record loss
         optimizer.zero_grad()
         curr_loss = loss.item()
@@ -124,8 +128,8 @@ def val_epoch(loader, model, criterion, device, epoch):
         outputs_CNN = encoder_CNN(images, seq_len)
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
 
-        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.cpu().numpy().flatten()
-        targets[step * batch_size: (step + 1) * batch_size] = targets.cpu().numpy().flatten()
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().numpy().flatten()
+        targets[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().numpy().flatten()
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
@@ -162,8 +166,8 @@ def eval_model(loader, model, device):
         outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, 
                                     xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
         
-        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.cpu().numpy().flatten()
-        targets[step * batch_size: (step + 1) * batch_size] = targets.cpu().numpy().flatten()
+        preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().numpy().flatten()
+        targets[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().numpy().flatten()
 
     train_score = average_precision_score(targets, preds)
     best_thr = decoder_RNN.threshold
@@ -287,7 +291,7 @@ def main():
     print('total time: {:.2f}'.format(total_time))
 
     
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on test set, jitter={args.jitter_ratio}')
     test_score = eval_model(test_loader, model, device)
