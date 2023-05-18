@@ -15,6 +15,7 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
 from src.early_stopping import EarlyStopping
+from omegaconf import OmegaConf
 
 
 def get_args():
@@ -141,7 +142,7 @@ def val_epoch(loader, model, criterion, device, epoch):
     decoder_RNN.threshold = best_thr
 
     val_score = average_precision_score(tgts, preds)
-    #log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', (epoch + 1) * n_steps)
+    log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', (epoch + 1) * n_steps)
 
     return epoch_loss / len(loader), val_score
 
@@ -216,12 +217,22 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                                ])
     else:
         TRANSFORM = crop_preprocess
+   
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
 
+
+
 def main():
-    args = get_args()
+    confi_path='config.yaml'
+    args = OmegaConf.load(confi_path)
+    image_dir={'JAAD': args.image_dir}
+    print('image_dir:',image_dir, '\n')
+    anns_paths={'JAAD': {'anns': args.anns_paths_anns,
+                               'split': args.anns_paths_split}}
+    print('anns_paths:',anns_paths, '\n')
+    # args = get_args()
     wandb.init(
         project="dlav-intention-prediction",
         config=args,
@@ -235,7 +246,7 @@ def main():
     # loading data
     print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
     print('------------------------------------------------------------------')
-    anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
+    # anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
 
     train_ds = prepare_data(anns_paths, image_dir, args, "train")
     val_ds = prepare_data(anns_paths, image_dir, args, "val")
@@ -257,7 +268,7 @@ def main():
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     crnn_params = list(encoder_res18.fc.parameters()) + list(decoder_lstm.parameters())
-    optimizer = torch.optim.Adam(crnn_params, lr=args.lr, weight_decay=args.wd)
+    optimizer = torch.optim.Adam(crnn_params, lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
 
@@ -269,11 +280,11 @@ def main():
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
 
-    print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, mf={args.max_frames}, training batch size={args.batch_size}')
+    print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.learning_rate}, weight-decay={args.weight_decay}, mf={args.max_frames}, training batch size={args.batch_size}')
     if args.output is None:
         cp_dir = Path(f'./checkpoints/{run_name}')
         cp_dir.mkdir(parents=True, exist_ok=True)
-        save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
+        save_path = f'{cp_dir}/Decoder_IMBS_lr{args.learning_rate}_wd{args.weight_decay}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
     else:
         save_path = args.output
     early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)

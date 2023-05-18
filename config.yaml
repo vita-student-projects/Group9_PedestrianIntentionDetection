@@ -1,0 +1,38 @@
+jaad: True
+pie: False
+titan: False
+
+# Uncomment on Scitas
+# anns_paths_anns: '/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl'
+# anns_paths_split: 'DATA/annotations/JAAD/splits/'
+# image_dir: '/work/scitas-share/datasets/Vita/civil-459/JAAD/images'
+
+# Uncomment on Jessica's computer
+anns_paths_anns: 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
+anns_paths_split: 'DATA/annotations/JAAD/splits'
+image_dir: 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images'
+
+fps: 5
+max_frames: 5
+pred: 10
+balancing_ratio: 1.0
+seed: 99
+jitter_ratio: -1.0
+bbox_min: 0
+encoder_type: CC
+encoder_pretrained: False
+encoder_path: ''
+# learning rate
+learning_rate: 1e-4
+# batch size
+batch_size: 4
+# number of epochs
+epochs: 10
+# weight decay
+weight_decay: 1e-5
+# output
+output: None
+early_stopping_patience: 3
+mobilenetsmall: False
+mobilenetbig: False
+num_workers: 4
