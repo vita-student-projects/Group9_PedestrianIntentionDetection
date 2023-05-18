@@ -8,7 +8,7 @@ from src.model.basenet import *
 from src.model.baselines import *
 from src.model.models import *
 from src.transform.preprocess import *
-from src.utils import count_parameters, find_best_threshold
+from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
@@ -26,8 +26,6 @@ def get_args():
                         help='use PIE dataset')
     parser.add_argument('--titan', default=False, action='store_true',
                         help='use TITAN dataset')
-    parser.add_argument('--mode', default='GO', type=str,
-                        help='transition mode, GO or STOP')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
     parser.add_argument('--max-frames', default=5, type=int,
@@ -42,7 +40,6 @@ def get_args():
                         help='jitter bbox for cropping')
     parser.add_argument('--bbox-min', default=0, type=int,
                         help='minimum bbox size')
-    
     parser.add_argument('--encoder-type', default='CC', type=str,
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
@@ -179,19 +176,18 @@ def eval_model(loader, model, device):
     print(classification_report(tgts, preds))
 
 
-
 def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
-    preds = (preds > best_thr).astype(int)
-    precision = precision_score(targets, preds)
-    recall = recall_score(targets, preds)
+    binarized_preds = (preds > best_thr).astype(int)
+    precision = precision_score(targets, binarized_preds)
+    recall = recall_score(targets, binarized_preds)
 
     wandb.log({f'{mode}/precision': precision , 
                f'{mode}/recall': recall, 
                f'{mode}/f1': best_f1, 
                f'{mode}/AP': ap, 
                f'{mode}/best_thr': best_thr,
+               f"{mode}/preds": wandb.Histogram(preds),
                f'{mode}/step': step}, commit=True)
-    wandb.log({f"{mode}/preds": wandb.Histogram(preds)})
     
     print('------------------------------------------------')
     print(f'Mode: {mode}')
@@ -228,10 +224,8 @@ def main():
     confi_path='config.yaml'
     args = OmegaConf.load(confi_path)
     image_dir={'JAAD': args.image_dir}
-    print('image_dir:',image_dir, '\n')
     anns_paths={'JAAD': {'anns': args.anns_paths_anns,
                                'split': args.anns_paths_split}}
-    print('anns_paths:',anns_paths, '\n')
     # args = get_args()
     wandb.init(
         project="dlav-intention-prediction",
@@ -311,7 +305,6 @@ def main():
     print('\n', '**************************************************************')
     print(f'End training at epoch {epoch}')
     print('total time: {:.2f}'.format(total_time))
-
     
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
     print(f'Test loader : {len(test_loader)}')
