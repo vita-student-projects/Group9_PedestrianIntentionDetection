@@ -25,8 +25,6 @@ def get_args():
                         help='use PIE dataset')
     parser.add_argument('--titan', default=False, action='store_true',
                         help='use TITAN dataset')
-    parser.add_argument('--mode', default='GO', type=str,
-                        help='transition mode, GO or STOP')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
     parser.add_argument('--max-frames', default=5, type=int,
@@ -41,7 +39,6 @@ def get_args():
                         help='jitter bbox for cropping')
     parser.add_argument('--bbox-min', default=0, type=int,
                         help='minimum bbox size')
-    
     parser.add_argument('--encoder-type', default='CC', type=str,
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
