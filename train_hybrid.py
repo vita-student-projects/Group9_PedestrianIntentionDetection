@@ -178,19 +178,18 @@ def eval_model(loader, model, device):
     print(classification_report(tgts, preds))
 
 
-
 def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
-    preds = (preds > best_thr).astype(int)
-    precision = precision_score(targets, preds)
-    recall = recall_score(targets, preds)
+    binarized_preds = (preds > best_thr).astype(int)
+    precision = precision_score(targets, binarized_preds)
+    recall = recall_score(targets, binarized_preds)
 
     wandb.log({f'{mode}/precision': precision , 
                f'{mode}/recall': recall, 
                f'{mode}/f1': best_f1, 
                f'{mode}/AP': ap, 
                f'{mode}/best_thr': best_thr,
+               f"{mode}/preds": wandb.Histogram(preds),
                f'{mode}/step': step}, commit=True)
-    wandb.log({f"{mode}/preds": wandb.Histogram(preds)})
     
     print('------------------------------------------------')
     print(f'Mode: {mode}')
