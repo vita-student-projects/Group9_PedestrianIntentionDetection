@@ -8,7 +8,7 @@ from src.model.basenet import *
 from src.model.baselines import *
 from src.model.models import *
 from src.transform.preprocess import *
-from src.utils import count_parameters, find_best_threshold
+from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
@@ -141,7 +141,7 @@ def val_epoch(loader, model, criterion, device, epoch):
     decoder_RNN.threshold = best_thr
 
     val_score = average_precision_score(tgts, preds)
-    #log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', (epoch + 1) * n_steps)
+    log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', (epoch + 1) * n_steps)
 
     return epoch_loss / len(loader), val_score
 
@@ -222,6 +222,7 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 
 def main():
     args = get_args()
+    seed_torch(args.seed)
     wandb.init(
         project="dlav-intention-prediction",
         config=args,
