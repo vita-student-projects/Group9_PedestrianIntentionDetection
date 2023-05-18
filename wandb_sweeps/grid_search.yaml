@@ -6,7 +6,7 @@ command:
   - "16"
   - "--early-stopping-patience"
   - "5"
-  - "epochs"
+  - "--epochs"
   - 50
 name: 'grid sweep'
 method: grid

@@ -220,14 +220,15 @@ def main():
     args = get_args()
     seed_torch(args.seed)
 
-    args.lr = wandb.config.learning_rate
-    args.wd = wandb.config.weight_decay
-
     wandb.init(
         project="dlav-intention-prediction",
         config=args,
     )
     run_name = wandb.run.name
+    
+    args.lr = wandb.config.learning_rate
+    args.wd = wandb.config.weight_decay
+
     # define our custom x axis metric
     for setup in ['train', 'val']:
         wandb.define_metric(f"{setup}/step")
