@@ -219,6 +219,10 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 def main():
     args = get_args()
     seed_torch(args.seed)
+
+    args.lr = wandb.config.learning_rate
+    args.wd = wandb.config.weight_decay
+
     wandb.init(
         project="dlav-intention-prediction",
         config=args,
