@@ -63,6 +63,7 @@ def get_args():
                         help='use mobilenet small or not')
     parser.add_argument('--mobilenetbig', default=False, action='store_true',
                         help='use mobilenet big or not')
+    parser.add_argument('-nw', '--num-workers', default=4, type=int, help='number of workers for data loading')
     args = parser.parse_args()
 
     return args
@@ -81,6 +82,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
 
     preds = np.zeros(n_steps * batch_size)
     tgts = np.zeros(n_steps * batch_size)
+
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len)
@@ -93,16 +95,15 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         # record loss
         optimizer.zero_grad()
         curr_loss = loss.item()
-        wandb.log({'train/loss': curr_loss}, step=epoch * n_steps + step)
         epoch_loss += curr_loss
-        # compute gradient and do SGD step, scheduler step
         loss.backward()
         optimizer.step()
 
+        wandb.log({'train/loss': curr_loss, 'train/step': epoch * n_steps + step}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
-    log_metrics(tgts, preds, best_thr, f1, train_score, 'train')
+    log_metrics(tgts, preds, best_thr, f1, train_score, 'train', (epoch + 1) * n_steps)
 
     return epoch_loss / len(loader)
 
@@ -133,14 +134,14 @@ def val_epoch(loader, model, criterion, device, epoch):
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
-        wandb.log({'val/loss': curr_loss}, step=epoch * n_steps + step)
+        wandb.log({'val/loss': curr_loss, 'val/step': epoch * n_steps + step})
         epoch_loss += curr_loss
 
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     decoder_RNN.threshold = best_thr
 
     val_score = average_precision_score(tgts, preds)
-    log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val')
+    #log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', (epoch + 1) * n_steps)
 
     return epoch_loss / len(loader), val_score
 
@@ -171,19 +172,24 @@ def eval_model(loader, model, device):
     train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
-    log_metrics(tgts, preds, best_thr, f1, train_score, 'test')
+    log_metrics(tgts, preds, best_thr, f1, train_score, 'test', 0)
     preds = preds > best_thr
 
     print(classification_report(tgts, preds))
 
 
 
-def log_metrics(targets, preds, best_thr, best_f1, ap, mode):
+def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
     preds = (preds > best_thr).astype(int)
     precision = precision_score(targets, preds)
     recall = recall_score(targets, preds)
 
-    wandb.log({f'{mode}/precision': precision , f'{mode}/recall': recall, f'{mode}/f1': best_f1, f'{mode}/AP': ap, f'{mode}/best_thr': best_thr})
+    wandb.log({f'{mode}/precision': precision , 
+               f'{mode}/recall': recall, 
+               f'{mode}/f1': best_f1, 
+               f'{mode}/AP': ap, 
+               f'{mode}/best_thr': best_thr,
+               f'{mode}/step': step}, commit=True)
     wandb.log({f"{mode}/preds": wandb.Histogram(preds)})
     
     print('------------------------------------------------')
@@ -221,6 +227,11 @@ def main():
         config=args,
     )
     run_name = wandb.run.name
+    # define our custom x axis metric
+    for setup in ['train', 'val']:
+        wandb.define_metric(f"{setup}/step")
+        wandb.define_metric(f"{setup}/*", step_metric=f"{setup}/step")
+
     # loading data
     print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
     print('------------------------------------------------------------------')
@@ -250,8 +261,8 @@ def main():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
 
     ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
@@ -291,15 +302,10 @@ def main():
     print('total time: {:.2f}'.format(total_time))
 
     
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on test set, jitter={args.jitter_ratio}')
-    test_score = eval_model(test_loader, model, device)
-    print('\n', '-----------------------------------------------------')
-    print('----->')
-    print('Model Evaluation score: {:.4f}'.format(test_score))
-    print('--------------------------------------------------------', '\n')
-
+    eval_model(test_loader, model, device)
 
 
 if __name__ == '__main__':
