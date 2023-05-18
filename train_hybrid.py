@@ -297,7 +297,6 @@ def main():
     print('\n', '**************************************************************')
     print(f'End training at epoch {epoch}')
     print('total time: {:.2f}'.format(total_time))
-
     
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
     print(f'Test loader : {len(test_loader)}')
