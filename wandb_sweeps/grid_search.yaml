@@ -1,13 +1,11 @@
 program: train_hybrid.py
 command:
-  - python
+  - python3
   - ${program}
   - "--batch-size"
   - "16"
   - "--early-stopping-patience"
   - "5"
-  - "-nw"
-  - "0"
 name: 'grid sweep'
 method: grid
 metric:
