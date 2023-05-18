@@ -1,7 +1,9 @@
 import torch
 import sys
 import os
-
+import numpy as np
+from sklearn.metrics import f1_score
+import random
 
 def save_to_checkpoint(save_path, epoch, model, optimizer, scheduler=None, verbose=True):
     # save checkpoint to disk
@@ -126,3 +128,27 @@ def reshape_anns(anns_list, device):
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def find_best_threshold(preds, targets):
+    best_f1 = 0
+    best_thr = None
+    for thr in np.linspace(0, 1, 10):
+        preds_thr = (preds > thr).astype(int)
+        f1 = f1_score(targets, preds_thr)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_thr = thr
+    return best_thr, best_f1
+
+
+def seed_torch(seed=1):
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    n_gpu = torch.cuda.device_count()
+    if n_gpu > 0:
+        torch.cuda.manual_seed_all(seed)

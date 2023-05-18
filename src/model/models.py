@@ -78,6 +78,8 @@ class DecoderRNN_IMBS(nn.Module):
         self.h_FC0_dim = h_FC0_dim
         self.h_FC1_dim = h_FC1_dim
         self.h_FC2_dim = h_FC2_dim
+
+        self.threshold = 0.5
     
         # image feature decoder
         self.RNN_0 = nn.LSTM(
@@ -157,7 +159,6 @@ class DecoderRNN_IMBS(nn.Module):
 def build_encoder_res18(args):
     """
     Construct CNN encoder with resnet-18 backbone
-
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.encoder_type == 'CC': #use crop-context encoder
