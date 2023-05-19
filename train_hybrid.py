@@ -131,9 +131,9 @@ def val_epoch(loader, model, criterion, device, epoch):
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
-        wandb.log({'val/loss': curr_loss, 'val/step': epoch * n_steps + step})
         epoch_loss += curr_loss
 
+    wandb.log({'val/loss': epoch_loss / n_steps, 'val/step': (epoch + 1) * n_steps})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     decoder_RNN.threshold = best_thr
 
