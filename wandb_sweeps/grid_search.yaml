@@ -1,0 +1,20 @@
+program: train_hybrid.py
+command:
+  - python3
+  - ${program}
+  - "--batch-size"
+  - "16"
+  - "--early-stopping-patience"
+  - "5"
+  - "--epochs"
+  - 50
+name: 'grid sweep v2'
+method: grid
+metric:
+  name: val/f1
+  goal: maximize
+parameters:
+  learning_rate:
+    values: [1e-4, 1e-3, 5e-3]
+  weight_decay:
+    values: [1e-5, 1e-4, 1e-3]

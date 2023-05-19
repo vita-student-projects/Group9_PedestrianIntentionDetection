@@ -131,9 +131,9 @@ def val_epoch(loader, model, criterion, device, epoch):
 
         loss = criterion(outputs_RNN, targets.view(-1, 1))
         curr_loss = loss.item()
-        wandb.log({'val/loss': curr_loss, 'val/step': epoch * n_steps + step})
         epoch_loss += curr_loss
 
+    wandb.log({'val/loss': epoch_loss / n_steps, 'val/step': (epoch + 1) * n_steps})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     decoder_RNN.threshold = best_thr
 
@@ -190,11 +190,11 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
     
     print('------------------------------------------------')
     print(f'Mode: {mode}')
-    print(f'best threshold: {best_thr}')
-    print(f'precision: {precision}')
-    print(f'recall: {recall}')
-    print(f'F1-score : {best_f1}')
-    print(f"average precision for transition prediction: {ap}")
+    print(f'best threshold: {best_thr:.3f}')
+    print(f'precision: {precision:.3f}')
+    print(f'recall: {recall:.3f}')
+    print(f'F1-score : {best_f1:.3f}')
+    print(f"average precision for transition prediction: {ap:.3f}")
     print('\n')
 
 
@@ -219,11 +219,16 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 def main():
     args = get_args()
     seed_torch(args.seed)
+
     wandb.init(
         project="dlav-intention-prediction",
         config=args,
     )
     run_name = wandb.run.name
+    
+    args.lr = wandb.config.learning_rate
+    args.wd = wandb.config.weight_decay
+
     # define our custom x axis metric
     for setup in ['train', 'val']:
         wandb.define_metric(f"{setup}/step")
