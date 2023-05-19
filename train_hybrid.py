@@ -190,11 +190,11 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
     
     print('------------------------------------------------')
     print(f'Mode: {mode}')
-    print(f'best threshold: {best_thr}')
-    print(f'precision: {precision}')
-    print(f'recall: {recall}')
-    print(f'F1-score : {best_f1}')
-    print(f"average precision for transition prediction: {ap}")
+    print(f'best threshold: {best_thr:.3f}')
+    print(f'precision: {precision:.3f}')
+    print(f'recall: {recall:.3f}')
+    print(f'F1-score : {best_f1:.3f}')
+    print(f"average precision for transition prediction: {ap:.3f}")
     print('\n')
 
 
