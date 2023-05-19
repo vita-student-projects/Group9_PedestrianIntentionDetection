@@ -8,7 +8,9 @@ command:
   - "5"
   - "--epochs"
   - 50
-name: 'grid sweep v2'
+  - "--max-frames"
+  - 10
+name: 'grid sweep max frames 2s'
 method: grid
 metric:
   name: val/f1

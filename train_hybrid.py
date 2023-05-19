@@ -96,7 +96,8 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-        wandb.log({'train/loss': curr_loss, 'train/step': epoch * n_steps + step}, commit=True)
+    wandb.log({'train/loss': curr_loss, 'train/step': (epoch + 1) * n_steps}, commit=True)
+
     train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
