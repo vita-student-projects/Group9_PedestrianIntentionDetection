@@ -23,16 +23,16 @@ encoder_type: CC
 encoder_pretrained: False
 encoder_path: ''
 # learning rate
-learning_rate: 1e-4
+learning_rate: 1e-3
 # batch size
-batch_size: 4
+batch_size: 10
 # number of epochs
-epochs: 10
+epochs: 50
 # weight decay
 weight_decay: 1e-5
 # output
 output: None
-early_stopping_patience: 3
+early_stopping_patience: 60
 mobilenetsmall: False
 mobilenetbig: False
 num_workers: 4
