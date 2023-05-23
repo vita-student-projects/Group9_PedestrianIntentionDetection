@@ -96,12 +96,11 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-    wandb.log({'train/loss': curr_loss, 'train/step': (epoch + 1) * n_steps}, commit=True)
-
+    wandb.log({'train/loss': curr_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
-    log_metrics(tgts, preds, best_thr, f1, train_score, 'train', (epoch + 1) * n_steps)
+    log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
     return epoch_loss / len(loader)
 
@@ -134,14 +133,14 @@ def val_epoch(loader, model, criterion, device, epoch):
         curr_loss = loss.item()
         epoch_loss += curr_loss
 
-    wandb.log({'val/loss': epoch_loss / n_steps, 'val/step': (epoch + 1) * n_steps})
+    wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     decoder_RNN.threshold = best_thr
 
     val_score = average_precision_score(tgts, preds)
-    log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', (epoch + 1) * n_steps)
+    log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
 
-    return epoch_loss / len(loader), val_score
+    return epoch_loss / len(loader), best_f1
 
 
 @torch.no_grad()
@@ -172,7 +171,6 @@ def eval_model(loader, model, device):
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'test', 0)
     preds = preds > best_thr
-
     print(classification_report(tgts, preds))
 
 
@@ -187,7 +185,7 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
                f'{mode}/AP': ap, 
                f'{mode}/best_thr': best_thr,
                f"{mode}/preds": wandb.Histogram(preds),
-               f'{mode}/step': step}, commit=True)
+               f'{mode}/epoch': step}, commit=True)
     
     print('------------------------------------------------')
     print(f'Mode: {mode}')
@@ -232,8 +230,8 @@ def main():
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
-        wandb.define_metric(f"{setup}/step")
-        wandb.define_metric(f"{setup}/*", step_metric=f"{setup}/step")
+        wandb.define_metric(f"{setup}/epoch")
+        wandb.define_metric(f"{setup}/*", step_metric=f"{setup}/epoch")
 
     # loading data
     print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
@@ -282,12 +280,15 @@ def main():
     early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)
 
     # start training
+    best_f1 = 0.0
     for epoch in range(args.epochs):
         start_epoch_time = time.time()
         train_loss = train_epoch(train_loader, model, criterion, optimizer, device, epoch)
-        val_loss, val_score = val_epoch(val_loader, model, criterion, device, epoch)
-        scheduler.step(val_score)
-        early_stopping(val_score, model, optimizer, epoch)
+        val_loss, val_f1 = val_epoch(val_loader, model, criterion, device, epoch)
+        best_f1 = max(best_f1, val_f1)
+        scheduler.step(val_f1)
+        early_stopping(val_f1, model, optimizer, epoch)
+        wandb.log({"val/best_f1": best_f1, "val/epoch": epoch})
         if early_stopping.early_stop:
             print(f'Early stopping after {epoch} epochs...')
             break
@@ -296,7 +297,7 @@ def main():
         print(f'End of epoch {epoch}')
         print('Training epoch loss: {:.4f}'.format(train_loss))
         print('Validation epoch loss: {:.4f}'.format(val_loss))
-        print('Validation epoch score (AP): {:.4f}'.format(val_score))
+        print('Validation epoch f1: {:.4f}'.format(val_f1))
         print('Epoch time: {:.2f}'.format(end_epoch_time))
         print('--------------------------------------------------------', '\n')
         total_time += end_epoch_time
@@ -304,8 +305,8 @@ def main():
     print(f'End training at epoch {epoch}')
     print('total time: {:.2f}'.format(total_time))
 
-    
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    load_from_checkpoint(model, save_path)
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on test set, jitter={args.jitter_ratio}')
     eval_model(test_loader, model, device)
