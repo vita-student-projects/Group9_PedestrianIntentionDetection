@@ -8,10 +8,10 @@ command:
   - "5"
   - "--epochs"
   - 50
-name: 'grid sweep v2'
+name: 'grid sweep v3'
 method: grid
 metric:
-  name: val/f1
+  name: val/best_f1
   goal: maximize
 parameters:
   learning_rate:
