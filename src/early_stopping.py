@@ -54,7 +54,7 @@ class EarlyStopping:
             }, self.checkpoint)
         
 
-def load_from_checkpoint(model, save_path):
-    checkpoint = torch.load(save_path)
+def load_from_checkpoint(model, save_path,device):
+    checkpoint = torch.load(save_path, map_location=device)
     model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
     model['decoder'].load_state_dict(checkpoint['decoder_state_dict'])

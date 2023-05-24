@@ -14,7 +14,7 @@ from sklearn.metrics import classification_report, f1_score, average_precision_s
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
-from src.early_stopping import EarlyStopping
+from src.early_stopping import EarlyStopping, load_from_checkpoint
 
 
 def get_args():
@@ -156,8 +156,8 @@ def main():
     model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
 
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-    save_path=r''
-    load_from_checkpoint(model, save_path)
+    save_path=r'D:\VisualStudioProgram\CIVIL459-PedestrianIntensionDetection\checkpoints\peach-sweep-4\Decoder_IMBS_lr0.001_wd1e-05_JAAD_mf10_pred10_bs16_202305221441.pt'
+    load_from_checkpoint(model, save_path,device)
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on test set, jitter={args.jitter_ratio}')
     eval_model(test_loader, model, device)
