@@ -44,6 +44,7 @@ class EarlyStopping:
         """
         if self.verbose:
             print(f'Validation score changed  ({self.best_score:.6f} --> {score:.6f}).  Saving model ...')
+            print(f'Model saved at {self.checkpoint}')
 
         torch.save({
             'epoch': epoch,
