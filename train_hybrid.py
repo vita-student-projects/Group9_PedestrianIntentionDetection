@@ -14,7 +14,7 @@ from sklearn.metrics import classification_report, f1_score, average_precision_s
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
-from src.early_stopping import EarlyStopping
+from src.early_stopping import EarlyStopping, load_from_checkpoint
 
 
 def get_args():
@@ -225,8 +225,8 @@ def main():
     )
     run_name = wandb.run.name
     
-    args.lr = wandb.config.learning_rate
-    args.wd = wandb.config.weight_decay
+    #args.lr = wandb.config.learning_rate
+    #args.wd = wandb.config.weight_decay
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
@@ -274,7 +274,8 @@ def main():
     if args.output is None:
         cp_dir = Path(f'./checkpoints/{run_name}')
         cp_dir.mkdir(parents=True, exist_ok=True)
-        save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
+        save_path = cp_dir / f'Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
+        print(f'Saving the model to: {save_path}')
     else:
         save_path = args.output
     early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)
