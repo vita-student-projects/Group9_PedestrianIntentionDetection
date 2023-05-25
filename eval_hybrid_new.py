@@ -101,8 +101,14 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
     binarized_preds = (preds > best_thr).astype(int)
     precision = precision_score(targets, binarized_preds)
     recall = recall_score(targets, binarized_preds)
+    wandb.log({f'{mode}/precision': precision , 
+               f'{mode}/recall': recall, 
+               f'{mode}/f1': best_f1, 
+               f'{mode}/AP': ap, 
+               f'{mode}/best_thr': best_thr,
+               f"{mode}/preds": wandb.Histogram(preds),
+               f'{mode}/epoch': step}, commit=True)
 
-    
     print('------------------------------------------------')
     print(f'Mode: {mode}')
     print(f'best threshold: {best_thr:.3f}')
@@ -133,6 +139,21 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 
 def main():
     args = get_args()
+    seed_torch(args.seed)
+
+    wandb.init(
+        project="dlav-intention-prediction",
+        config=args,
+    )
+    run_name = wandb.run.name
+    
+    args.lr = wandb.config.learning_rate
+    args.wd = wandb.config.weight_decay
+
+    # define our custom x axis metric
+    for setup in ['train', 'val']:
+        wandb.define_metric(f"{setup}/epoch")
+        wandb.define_metric(f"{setup}/*", step_metric=f"{setup}/epoch")
 
     # loading data
     print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
