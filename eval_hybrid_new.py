@@ -146,7 +146,8 @@ def main():
         config=args,
     )
     run_name = wandb.run.name
-    
+
+
 
 
     # define our custom x axis metric
@@ -176,7 +177,7 @@ def main():
     model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
 
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
-    save_path=r'D:\VisualStudioProgram\CIVIL459-PedestrianIntensionDetection\checkpoints\peach-sweep-4\Decoder_IMBS_lr0.001_wd1e-05_JAAD_mf10_pred10_bs16_202305221441.pt'
+    save_path=r'/home/cchang/CIVIL459-PedestrianIntensionDetection/checkpoints/deep-sweep-7/Decoder_IMBS_lr0.001_wd1e-05_JAAD_mf5_pred10_bs16_202305190306.pt'
     load_from_checkpoint(model, save_path,device)
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on test set, jitter={args.jitter_ratio}')

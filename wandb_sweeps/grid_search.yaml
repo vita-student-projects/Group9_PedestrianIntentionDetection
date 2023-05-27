@@ -10,6 +10,7 @@ command:
   - 50
   - "--max-frames"
   - 10
+  - "--mobilenetsmall"
 name: 'grid sweep max frames 2s'
 method: grid
 metric:
@@ -17,6 +18,6 @@ metric:
   goal: maximize
 parameters:
   learning_rate:
-    values: [1e-4, 1e-3, 5e-3]
+    values: [1e-3]
   weight_decay:
-    values: [1e-5, 1e-4, 1e-3]
+    values: [1e-3]
