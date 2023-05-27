@@ -94,7 +94,8 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-    wandb.log({'train/loss': curr_loss, 'train/epoch': epoch + 1}, commit=True)
+    epoch_loss /= n_steps
+    wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = encoder_CNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
@@ -197,12 +198,11 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
     crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
     if image_set == 'train':
-        TRANSFORM = Compose([crop_preprocess,
-                               ImageTransform(torchvision.transforms.ColorJitter(
+        TRANSFORM = Compose([ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     else:
-        TRANSFORM = crop_preprocess
+        TRANSFORM = None
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -231,7 +231,7 @@ def main():
     anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
 
     train_ds = prepare_data(anns_paths, image_dir, args, "train")
-    val_ds = prepare_data(anns_paths, image_dir, args, "train")
+    val_ds = prepare_data(anns_paths, image_dir, args, "val")
     test_ds = prepare_data(anns_paths, image_dir, args, "test")
     
     print('------------------------------------------------------------------')
@@ -249,7 +249,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True,drop_last=True)
+    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True,drop_last=False)
 
     ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
