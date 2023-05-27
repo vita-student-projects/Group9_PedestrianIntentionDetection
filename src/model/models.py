@@ -19,6 +19,18 @@ class CNNEncoder(nn.Module):
             for para in child.parameters():
                 para.requires_grad = False
 
+    def set_momentum(self, momentum):
+        
+        def _set_momentum_recursive(module, momentum):    
+            if isinstance(module, torch.nn.BatchNorm2d):
+                module.momentum = momentum
+                return
+            for child in module.children():
+                _set_momentum_recursive(child, momentum)
+
+        _set_momentum_recursive(self.backbone, momentum)
+
+
     def forward(self, x_5d, x_lengths):
         x_seq = []
         batch_size = x_5d.size(0)
@@ -47,6 +59,7 @@ class Res18CropEncoder(CNNEncoder):
         super().__init__(activation=activation)
         self.backbone = resnet
         self.fc = nn.Linear(512, CNN_embed_dim)
+    
 
 
 class MobilenetCropEncoder(CNNEncoder):
@@ -57,7 +70,7 @@ class MobilenetCropEncoder(CNNEncoder):
         in_features = self.backbone.classifier[0].in_features
         self.backbone.classifier = torch.nn.Identity()
         self.fc = nn.Linear(in_features, CNN_embed_dim)
-   
+
                 
 class Res18RoIEncoder(CNNEncoder):
     """
