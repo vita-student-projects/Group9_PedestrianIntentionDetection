@@ -231,7 +231,7 @@ def main():
     anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
 
     train_ds = prepare_data(anns_paths, image_dir, args, "train")
-    val_ds = prepare_data(anns_paths, image_dir, args, "val")
+    val_ds = prepare_data(anns_paths, image_dir, args, "train")
     test_ds = prepare_data(anns_paths, image_dir, args, "test")
     
     print('------------------------------------------------------------------')
@@ -249,7 +249,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True,drop_last=True)
 
     ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')

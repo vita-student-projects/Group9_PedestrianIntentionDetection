@@ -96,7 +96,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-    wandb.log({'train/loss': curr_loss, 'train/epoch': epoch + 1}, commit=True)
+    wandb.log({'train/loss': epoch_loss/n_steps, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
@@ -205,12 +205,12 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
     crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
     if image_set == 'train':
-        TRANSFORM = Compose([crop_preprocess,
+        TRANSFORM = Compose([#crop_preprocess,
                                ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     else:
-        TRANSFORM = crop_preprocess
+        TRANSFORM = None #crop_preprocess
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -225,8 +225,8 @@ def main():
     )
     run_name = wandb.run.name
     
-    args.lr = wandb.config.learning_rate
-    args.wd = wandb.config.weight_decay
+    # args.lr = wandb.config.learning_rate
+    # args.wd = wandb.config.weight_decay
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
@@ -247,13 +247,13 @@ def main():
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = build_encoder_res18(args)
+    print(f'Number of cnnencoder parameters: encoder: {count_parameters(encoder_res18)}')
     # freeze CNN-encoder during training
     encoder_res18.freeze_backbone()
 
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
-    
-    print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder: {count_parameters(encoder_res18)}')
+    print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder train: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
     # training settings
     criterion = torch.nn.BCELoss().to(device)

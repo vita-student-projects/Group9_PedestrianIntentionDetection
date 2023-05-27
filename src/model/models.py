@@ -26,7 +26,7 @@ class CNNEncoder(nn.Module):
             cnn_embed_seq = []
             for t in range(x_lengths[i]):
                 img = x_5d[i, t, :, :, :]
-                x = self.backbone(torch.unsqueeze(img,dim=0))  # MobileNet
+                x = self.backbone(torch.unsqueeze(img,dim=0))  
                 x = self.fc(x)
                 x = self.activation(x)
                 x = x.view(x.size(0), -1) # flatten output of conv
