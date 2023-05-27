@@ -147,8 +147,7 @@ def main():
     )
     run_name = wandb.run.name
     
-    args.lr = wandb.config.learning_rate
-    args.wd = wandb.config.weight_decay
+
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
