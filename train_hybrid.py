@@ -96,13 +96,14 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-    wandb.log({'train/loss': curr_loss, 'train/epoch': epoch + 1}, commit=True)
+    epoch_loss /= n_steps
+    wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
-    return epoch_loss / len(loader)
+    return epoch_loss
 
 
 @torch.no_grad()
@@ -133,14 +134,15 @@ def val_epoch(loader, model, criterion, device, epoch):
         curr_loss = loss.item()
         epoch_loss += curr_loss
 
-    wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
+    epoch_loss /= n_steps
+    wandb.log({'val/loss': epoch_loss, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     decoder_RNN.threshold = best_thr
 
     val_score = average_precision_score(tgts, preds)
     log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
 
-    return epoch_loss / len(loader), best_f1
+    return epoch_loss, best_f1
 
 
 @torch.no_grad()
@@ -205,12 +207,11 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
     crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
     if image_set == 'train':
-        TRANSFORM = Compose([crop_preprocess,
-                               ImageTransform(torchvision.transforms.ColorJitter(
+        TRANSFORM = Compose([ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     else:
-        TRANSFORM = crop_preprocess
+        TRANSFORM = None
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
