@@ -112,9 +112,7 @@ class DecoderRNN_IMBS(nn.Module):
         self.act = nn.Sigmoid()
 
     def forward(self, xc_3d, xp_3d, xb_3d, xs_2d, x_lengths):  
-        # print("entered decoder forward", flush=True)      
-        # use input of descending length
-        # print("xc_3d shape", xc_3d.shape, "xp_3d shape", xp_3d.shape, 'xb_3d shape', xb_3d.shape, flush=True)
+
         packed_x0_RNN = torch.nn.utils.rnn.pack_padded_sequence(xc_3d, x_lengths, 
                                                                 batch_first=True, enforce_sorted=False)
         packed_x1_RNN = torch.nn.utils.rnn.pack_padded_sequence(xp_3d, x_lengths, 
@@ -125,10 +123,11 @@ class DecoderRNN_IMBS(nn.Module):
         self.RNN_1.flatten_parameters()
         self.RNN_2.flatten_parameters()
 
+        # None represents zero initial hidden state. RNN_out has shape=(batch, time_step, output_size) 
         packed_RNN_out_0, _ = self.RNN_0(packed_x0_RNN, None)
         packed_RNN_out_1, _ = self.RNN_1(packed_x1_RNN, None)
         packed_RNN_out_2, _ = self.RNN_2(packed_x2_RNN, None)
-        """ None represents zero initial hidden state. RNN_out has shape=(batch, time_step, output_size) """
+
         RNN_out_0, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_RNN_out_0, batch_first=True)
         RNN_out_0 = RNN_out_0.contiguous()
         RNN_out_1, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_RNN_out_1, batch_first=True)
