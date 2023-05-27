@@ -63,6 +63,7 @@ def get_args():
     parser.add_argument('--mobilenetbig', default=False, action='store_true',
                         help='use mobilenet big or not')
     parser.add_argument('-nw', '--num-workers', default=4, type=int, help='number of workers for data loading')
+    parser.add_argument('-momentum', '--momentum', default=0.5, type=float, help='set the momentum')
     args = parser.parse_args()
 
     return args
@@ -239,6 +240,7 @@ def main():
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = build_encoder_res18(args, hidden_dim=OUTPUT_DIM, activation='sigmoid')
+    encoder_res18.set_momentum(args.momentum)
     
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
