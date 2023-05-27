@@ -9,6 +9,11 @@ from ..utils import *
 
 
 class CNNEncoder(nn.Module):
+    def __init__(self, activation='relu'):
+        super().__init__()
+        self.threshold = 0.5
+        self.activation = F.relu if activation == 'relu' else F.sigmoid
+
     def freeze_backbone(self):
         for child in self.backbone.children():
             for para in child.parameters():
@@ -23,12 +28,12 @@ class CNNEncoder(nn.Module):
                 img = x_5d[i, t, :, :, :]
                 x = self.backbone(torch.unsqueeze(img,dim=0))  # MobileNet
                 x = self.fc(x)
-                x = F.relu(x)
+                x = self.activation(x)
                 x = x.view(x.size(0), -1) # flatten output of conv
                 cnn_embed_seq.append(x)                    
             # swap time and sample dim such that (sample dim=1, time dim, CNN latent dim)
             embed_seq = torch.stack(cnn_embed_seq, dim=0).transpose_(0, 1)
-            embed_seq = torch.squeeze(embed_seq)
+            embed_seq = torch.squeeze(embed_seq, 1)
             fea_dim = embed_seq.shape[-1]
             embed_seq = embed_seq.view(-1,fea_dim)
             x_seq.append(embed_seq)
@@ -38,15 +43,15 @@ class CNNEncoder(nn.Module):
 
 
 class Res18CropEncoder(CNNEncoder):
-    def __init__(self, resnet, CNN_embed_dim=256):
-        super().__init__()
+    def __init__(self, resnet, CNN_embed_dim=256, activation='relu'):
+        super().__init__(activation=activation)
         self.backbone = resnet
         self.fc = nn.Linear(512, CNN_embed_dim)
 
 
 class MobilenetCropEncoder(CNNEncoder):
-    def __init__(self, mobilenet, CNN_embed_dim=256):
-        super().__init__()
+    def __init__(self, mobilenet, CNN_embed_dim=256, activation='relu'):
+        super().__init__(activation=activation)
         self.backbone = mobilenet
         # in_features: get the input size of the classifier layer of original mobilenet v3
         in_features = self.backbone.classifier[0].in_features
@@ -60,8 +65,8 @@ class Res18RoIEncoder(CNNEncoder):
     Input: a sequence of  RGB images Tx3xHxW (0<T<T_max)
     Output: T_max x 1 x CNN_embed_dim feature vector
     """
-    def __init__(self, resnet, CNN_embed_dim=256):
-        super().__init__()
+    def __init__(self, resnet, CNN_embed_dim=256, activation='relu'):
+        super().__init__(activation=activation)
         
         self.backbone = resnet
         self.fc = nn.Linear(1024, CNN_embed_dim)
@@ -155,7 +160,7 @@ class DecoderRNN_IMBS(nn.Module):
         x = self.act(x)
         return x
 
-def build_encoder_res18(args):
+def build_encoder_res18(args, hidden_dim=256, activation='relu'):
     """
     Construct CNN encoder with resnet-18 backbone
     """
@@ -189,9 +194,9 @@ def build_encoder_res18(args):
                 res18.fc = torch.nn.Identity()
                 cnn_gpu = res18.to(device)
         if args.mobilenetsmall or args.mobilenetbig:
-            encoder_cnn = MobilenetCropEncoder(mobilenet=cnn_gpu)
+            encoder_cnn = MobilenetCropEncoder(mobilenet=cnn_gpu, CNN_embed_dim=hidden_dim, activation=activation)
         else:
-            encoder_cnn = Res18CropEncoder(resnet=cnn_gpu)
+            encoder_cnn = Res18CropEncoder(resnet=cnn_gpu, CNN_embed_dim=hidden_dim, activation=activation)
     else:
          if args.encoder_pretrained:
              res18 = ResnetBlocks(torchvision.models.resnet18(pretrained=False))
@@ -212,7 +217,7 @@ def build_encoder_res18(args):
          res18_roi.dropout = torch.nn.Identity()
          res18_roi.act = torch.nn.Identity()
          # encoder
-         encoder_cnn = Res18RoIEncoder(encoder=res18_roi)
+         encoder_cnn = Res18RoIEncoder(encoder=res18_roi, CNN_embed_dim=hidden_dim, activation=activation)
     encoder_cnn.to(device)
     return encoder_cnn
 
