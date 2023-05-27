@@ -173,6 +173,7 @@ def subsample_and_balance(intention_dataset, balance, max_frames=MAX_FRAMES, see
     else:
         balanced_new_samples = new_samples
     random.shuffle(balanced_new_samples)
+    print(f"Total number of samples before and after balancing: {len(new_samples)}, {len(balanced_new_samples)}")
     return balanced_new_samples
 
 

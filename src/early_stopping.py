@@ -55,7 +55,7 @@ class EarlyStopping:
         
 
 def load_from_checkpoint(model, save_path):
-    checkpoint = torch.load(save_path)
+    device = torch.device('cpu') if not torch.cuda.is_available() else torch.device('cuda')
+    checkpoint = torch.load(save_path, map_location=device)
     model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
     model['decoder'].load_state_dict(checkpoint['decoder_state_dict'])
-
