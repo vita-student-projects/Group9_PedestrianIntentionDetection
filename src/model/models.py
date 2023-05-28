@@ -19,16 +19,18 @@ class CNNEncoder(nn.Module):
             for para in child.parameters():
                 para.requires_grad = False
 
-    def set_momentum(self, momentum):
+    def turn_off_running_stats(self):
         
-        def _set_momentum_recursive(module, momentum):    
+        def _turn_off_running_stats_recursive(module):    
             if isinstance(module, torch.nn.BatchNorm2d):
-                module.momentum = momentum
+                module.track_running_stats = False
+                module.running_mean = None
+                module.running_var = None
                 return
             for child in module.children():
-                _set_momentum_recursive(child, momentum)
+                _turn_off_running_stats_recursive(child)
 
-        _set_momentum_recursive(self.backbone, momentum)
+        _turn_off_running_stats_recursive(self.backbone)
 
 
     def forward(self, x_5d, x_lengths):

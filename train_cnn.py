@@ -37,8 +37,6 @@ def get_args():
                         help='ratio of balanced instances(1/0)')
     parser.add_argument('--seed', default=99, type=int,
                         help='random seed for sampling')
-    parser.add_argument('--jitter-ratio', default=-1.0, type=float,
-                        help='jitter bbox for cropping')
     parser.add_argument('--bbox-min', default=0, type=int,
                         help='minimum bbox size')
     parser.add_argument('--encoder-type', default='CC', type=str,
@@ -63,7 +61,6 @@ def get_args():
     parser.add_argument('--mobilenetbig', default=False, action='store_true',
                         help='use mobilenet big or not')
     parser.add_argument('-nw', '--num-workers', default=4, type=int, help='number of workers for data loading')
-    parser.add_argument('-momentum', '--momentum', default=0.5, type=float, help='set the momentum')
     args = parser.parse_args()
 
     return args
@@ -83,6 +80,10 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
+        if step == 0:
+            print(f"TRAIN: {epoch}")
+            print(targets)
+            print(outputs_CNN)
         loss = criterion(outputs_CNN, targets.view(-1, 1))
 
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
@@ -123,6 +124,10 @@ def val_epoch(loader, model, criterion, device, epoch):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
 
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
+        if step == 0:
+            print(f'VAL epoch: {epoch}')
+            print(targets)
+            print(outputs_CNN)
 
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
@@ -156,6 +161,9 @@ def eval_model(loader, model, device):
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
+        if step == 0:
+            print(targets)
+            print(outputs_CNN)
         
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
@@ -196,14 +204,16 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     balance = False if image_set == "test" else True
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
 
-    jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
-    crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
+    #jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
+    #crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
     if image_set == 'train':
         TRANSFORM = Compose([ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     else:
         TRANSFORM = None
+    
+    print('TRansform:',TRANSFORM)
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -211,7 +221,6 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 def main():
     args = get_args()
     seed_torch(args.seed)
-
     wandb.init(
         project="dlav-intention-prediction",
         config=args,
@@ -240,7 +249,7 @@ def main():
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = build_encoder_res18(args, hidden_dim=OUTPUT_DIM, activation='sigmoid')
-    encoder_res18.set_momentum(args.momentum)
+    encoder_res18.turn_off_running_stats()
     
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
@@ -251,8 +260,8 @@ def main():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True,drop_last=False)
-
+    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
+ 
     ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
@@ -297,7 +306,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
     load_from_checkpoint(model, save_path)
     print(f'Test loader : {len(test_loader)}')
-    print(f'Start evaluation on test set, jitter={args.jitter_ratio}')
+    print(f'Start evaluation on test set')
     eval_model(test_loader, model, device)
 
 
