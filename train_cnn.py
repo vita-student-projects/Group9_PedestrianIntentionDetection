@@ -31,14 +31,12 @@ def get_args():
                         help='use TITAN dataset')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
-    parser.add_argument('--pred', default=10, type=int,
+    parser.add_argument('--pred', default=5, type=int,
                         help='prediction length, predicting-ahead time')
     parser.add_argument('--balancing-ratio', default=1.0, type=float,
                         help='ratio of balanced instances(1/0)')
     parser.add_argument('--seed', default=99, type=int,
                         help='random seed for sampling')
-    parser.add_argument('--bbox-min', default=0, type=int,
-                        help='minimum bbox size')
     parser.add_argument('--encoder-type', default='CC', type=str,
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
@@ -81,10 +79,6 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
-        if step == 0:
-            print(f"TRAIN: {epoch}")
-            print(targets)
-            print(outputs_CNN)
         loss = criterion(outputs_CNN, targets.view(-1, 1))
 
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
@@ -127,10 +121,6 @@ def val_epoch(loader, model, criterion, device, epoch):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
 
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
-        if step == 0:
-            print(f'VAL epoch: {epoch}')
-            print(targets)
-            print(outputs_CNN)
 
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
@@ -217,7 +207,6 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                                ])
     else:
         TRANSFORM = resize_preprocess
-    TRANSFORM = None
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM)
     return ds
 
