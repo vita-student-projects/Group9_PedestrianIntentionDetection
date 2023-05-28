@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch
 import numpy as np
 from src.dataset.loader import IntentionSequenceDataset, define_path
-from src.transform.preprocess import ImageTransform, Compose, CropBox
+from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.model.models import build_encoder_res18
@@ -69,6 +69,7 @@ def get_args():
 def train_epoch(loader, model, criterion, optimizer, device, epoch):
     encoder_CNN = model['encoder']
     encoder_CNN.train()
+
     epoch_loss = 0.0
 
     n_steps = len(loader)
@@ -96,10 +97,12 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
+    optimizer.zero_grad()
     epoch_loss /= n_steps
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
-    best_thr = encoder_CNN.threshold
+    #best_thr = encoder_CNN.threshold
+    best_thr = 0.5
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
@@ -137,8 +140,10 @@ def val_epoch(loader, model, criterion, device, epoch):
         epoch_loss += curr_loss
 
     wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
-    best_thr, best_f1 = find_best_threshold(preds, tgts)
-    encoder_CNN.threshold = best_thr
+    #best_thr, best_f1 = find_best_threshold(preds, tgts)
+    #encoder_CNN.threshold = best_thr
+    best_thr = 0.5
+    best_f1 = f1_score(tgts, preds > best_thr)
 
     val_score = average_precision_score(tgts, preds)
     log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
@@ -204,17 +209,16 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     balance = False if image_set == "test" else True
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
 
-    #jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
-    #crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
+    resize_preprocess = ResizeFrame(resize_ratio=0.5)
     if image_set == 'train':
-        TRANSFORM = Compose([ImageTransform(torchvision.transforms.ColorJitter(
+        TRANSFORM = Compose([resize_preprocess, 
+                             ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     else:
-        TRANSFORM = None
-    
-    print('TRansform:',TRANSFORM)
-    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
+        TRANSFORM = resize_preprocess
+    TRANSFORM = None
+    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM)
     return ds
 
 
@@ -267,7 +271,14 @@ def main():
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
 
-    print(f'Start training, PVIBS-lstm-model, neg_in_trans, initail lr={args.lr}, weight-decay={args.wd}, training batch size={args.batch_size}')
+    for train_el, val_el in zip(train_loader, val_loader):
+        train_images, train_seq_len, _, _, _, train_targets = unpack_batch(train_el, device)
+        val_images, val_seq_len, _, _, _, val_targets = unpack_batch(val_el, device)
+        assert torch.allclose(train_seq_len, val_seq_len), "train and val seq_len should be the same"
+        assert torch.allclose(train_images, val_images), "train and val images should be the same"
+        assert torch.allclose(train_targets, val_targets), "train and val targets should be the same"
+
+    print(f'Start training, cnn-lstm-model, initail lr={args.lr}, weight-decay={args.wd}, training batch size={args.batch_size}')
     if args.output is None:
         cp_dir = Path(f'./checkpoints/{run_name}')
         cp_dir.mkdir(parents=True, exist_ok=True)

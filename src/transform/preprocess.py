@@ -50,6 +50,17 @@ class CropBox(Preprocess):
         img = img_pad(img, mode=self.padding_mode, size=self.size)
 
         return img, anns
+    
+
+class ResizeFrame(Preprocess):
+    def __init__(self, resize_ratio):
+        self.resize_ratio = resize_ratio
+
+    def __call__(self, image, anns):
+        bbox = anns['bbox']
+        img, bbox_new = resize(image, bbox, self.resize_ratio)
+        anns['bbox'] = bbox_new
+        return img, anns
 
 
 class ImageTransform(Preprocess):

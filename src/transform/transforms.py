@@ -2,6 +2,7 @@ import PIL
 import torch
 import copy
 import numpy as np
+import torchvision.transforms as transforms
 
 
 def img_pad(img, mode='warp', size=224):
@@ -154,6 +155,18 @@ def crop_and_rescale(image, bbox, cropping_ratio, width, height):
     bbox_ped_new = copy.deepcopy(bbox_new)
 
     return image_new, bbox_new, bbox_ped_new
+
+
+def resize(image, bbox, resize_ratio):
+    w, h  = image.size
+    print(f'before: {bbox}')
+    new_width = int(w * resize_ratio)
+    new_height = int(h * resize_ratio)
+
+    image_new = transforms.Resize((new_height, new_width))(image)
+    bbox_new = np.array(bbox) * resize_ratio
+    print('after: ', bbox_new)
+    return image_new, bbox_new
 
 
 def random_flip(image, bbox, probability):
