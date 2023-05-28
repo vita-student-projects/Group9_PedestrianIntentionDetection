@@ -205,7 +205,6 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
 
     jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
-    crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
     if image_set == 'train':
         TRANSFORM = Compose([ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
