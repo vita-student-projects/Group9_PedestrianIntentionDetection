@@ -51,7 +51,7 @@ def get_args():
                         metavar='N', help='mini-batch size (default: 4)')
     parser.add_argument('-e', '--epochs', default=10, type=int,
                         help='number of epochs to train')
-    parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-5,
+    parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-4,
                         help='Weight decay', dest='wd')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
@@ -226,7 +226,6 @@ def main():
     run_name = wandb.run.name
     
     args.lr = wandb.config.learning_rate
-    args.wd = wandb.config.weight_decay
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
