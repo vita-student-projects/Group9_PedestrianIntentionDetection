@@ -164,7 +164,7 @@ def resize(image, bbox, resize_ratio):
     new_height = int(h * resize_ratio)
 
     image_new = transforms.Resize((new_height, new_width))(image)
-    bbox_new = np.array(bbox) * resize_ratio
+    bbox_new = (np.array(bbox) * resize_ratio).tolist()
     print('after: ', bbox_new)
     return image_new, bbox_new
 

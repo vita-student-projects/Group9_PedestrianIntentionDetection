@@ -8,7 +8,7 @@ from src.dataset.loader import IntentionSequenceDataset, define_path
 from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
-from src.model.models import build_encoder_res18
+from src.model.models import Res18Classifier
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
@@ -252,14 +252,13 @@ def main():
     print('Finish annotation loading', '\n')
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    encoder_res18 = build_encoder_res18(args, hidden_dim=OUTPUT_DIM, activation='sigmoid')
-    encoder_res18.turn_off_running_stats()
+    encoder_res18 = Res18Classifier(CNN_embed_dim=256, activation="sigmoid").to(device)
     
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
     # training settings
     criterion = torch.nn.BCELoss().to(device)
-    cnn_params = list(encoder_res18.parameters())
+    cnn_params = list(encoder_res18.fc.parameters())
     optimizer = torch.optim.Adam(cnn_params, lr=args.lr, weight_decay=args.wd)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
@@ -270,13 +269,6 @@ def main():
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
-
-    for train_el, val_el in zip(train_loader, val_loader):
-        train_images, train_seq_len, _, _, _, train_targets = unpack_batch(train_el, device)
-        val_images, val_seq_len, _, _, _, val_targets = unpack_batch(val_el, device)
-        assert torch.allclose(train_seq_len, val_seq_len), "train and val seq_len should be the same"
-        assert torch.allclose(train_images, val_images), "train and val images should be the same"
-        assert torch.allclose(train_targets, val_targets), "train and val targets should be the same"
 
     print(f'Start training, cnn-lstm-model, initail lr={args.lr}, weight-decay={args.wd}, training batch size={args.batch_size}')
     if args.output is None:
