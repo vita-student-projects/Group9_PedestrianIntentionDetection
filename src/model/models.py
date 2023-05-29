@@ -63,6 +63,18 @@ class Res18CropEncoder(CNNEncoder):
         self.fc = nn.Linear(512, CNN_embed_dim)
     
 
+class Res18Classifier(CNNEncoder):
+    def __init__(self, CNN_embed_dim=256, activation='relu'):
+        super().__init__(activation=activation)
+        self.backbone = torchvision.models.resnet18(pretrained=True)
+        self.backbone.fc = torch.nn.Identity()
+        self.fc = nn.Sequential(
+            nn.Linear(512, CNN_embed_dim),
+            nn.ReLU(),
+            nn.Linear(CNN_embed_dim, 2),
+        )
+
+
 
 class MobilenetCropEncoder(CNNEncoder):
     def __init__(self, mobilenet, CNN_embed_dim=256, activation='relu'):
