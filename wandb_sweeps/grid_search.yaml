@@ -10,15 +10,13 @@ command:
   - 50
   - "--max-frames"
   - 10
-  - "-b"
-  - 4
   - "-nw"
-  - 1
-name: 'grid sweep max frames 2s, no crop'
+  - 4
+name: 'grid sweep max frames 2s, resize, no scene'
 method: grid
 metric:
   name: val/best_f1
   goal: maximize
 parameters:
   learning_rate:
-    values: [1e-3, 1e-5, 1e-4]
+    values: [1e-4]
