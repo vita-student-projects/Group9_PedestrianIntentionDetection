@@ -95,12 +95,11 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     epoch_loss /= n_steps
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
-    #best_thr = encoder_CNN.threshold
-    best_thr = 0.5
+    best_thr = encoder_CNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
-    return epoch_loss / len(loader)
+    return epoch_loss
 
 
 @torch.no_grad()
@@ -130,9 +129,8 @@ def val_epoch(loader, model, criterion, device, epoch):
         epoch_loss += curr_loss
 
     wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
-    #best_thr, best_f1 = find_best_threshold(preds, tgts)
-    #encoder_CNN.threshold = best_thr
-    best_thr = 0.5
+    best_thr, best_f1 = find_best_threshold(preds, tgts)
+    encoder_CNN.threshold = best_thr
     best_f1 = f1_score(tgts, preds > best_thr)
 
     val_score = average_precision_score(tgts, preds)
@@ -242,7 +240,7 @@ def main():
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = Res18Classifier(CNN_embed_dim=256, activation="sigmoid").to(device)
-    
+    encoder_res18.freeze_backbone()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
     # training settings
