@@ -243,8 +243,6 @@ def main():
     )
     run_name = wandb.run.name
     
-    # args.lr = wandb.config.learning_rate
-
     # define our custom x axis metric
     for setup in ['train', 'val']:
         wandb.define_metric(f"{setup}/epoch")
