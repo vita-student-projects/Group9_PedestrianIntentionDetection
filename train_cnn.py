@@ -8,7 +8,7 @@ from src.dataset.loader import IntentionSequenceDataset, define_path
 from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
-from src.model.models import build_encoder_res18
+from src.model.models import Res18Classifier
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
@@ -31,14 +31,12 @@ def get_args():
                         help='use TITAN dataset')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
-    parser.add_argument('--pred', default=10, type=int,
+    parser.add_argument('--pred', default=5, type=int,
                         help='prediction length, predicting-ahead time')
     parser.add_argument('--balancing-ratio', default=1.0, type=float,
                         help='ratio of balanced instances(1/0)')
     parser.add_argument('--seed', default=99, type=int,
                         help='random seed for sampling')
-    parser.add_argument('--bbox-min', default=0, type=int,
-                        help='minimum bbox size')
     parser.add_argument('--encoder-type', default='CC', type=str,
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
@@ -81,10 +79,6 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
-        if step == 0:
-            print(f"TRAIN: {epoch}")
-            print(targets)
-            print(outputs_CNN)
         loss = criterion(outputs_CNN, targets.view(-1, 1))
 
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
@@ -101,12 +95,11 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     epoch_loss /= n_steps
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
-    #best_thr = encoder_CNN.threshold
-    best_thr = 0.5
+    best_thr = encoder_CNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
-    return epoch_loss / len(loader)
+    return epoch_loss
 
 
 @torch.no_grad()
@@ -127,10 +120,6 @@ def val_epoch(loader, model, criterion, device, epoch):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
 
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
-        if step == 0:
-            print(f'VAL epoch: {epoch}')
-            print(targets)
-            print(outputs_CNN)
 
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
@@ -140,9 +129,8 @@ def val_epoch(loader, model, criterion, device, epoch):
         epoch_loss += curr_loss
 
     wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
-    #best_thr, best_f1 = find_best_threshold(preds, tgts)
-    #encoder_CNN.threshold = best_thr
-    best_thr = 0.5
+    best_thr, best_f1 = find_best_threshold(preds, tgts)
+    encoder_CNN.threshold = best_thr
     best_f1 = f1_score(tgts, preds > best_thr)
 
     val_score = average_precision_score(tgts, preds)
@@ -217,7 +205,6 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                                ])
     else:
         TRANSFORM = resize_preprocess
-    TRANSFORM = None
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM)
     return ds
 
@@ -252,14 +239,13 @@ def main():
     print('Finish annotation loading', '\n')
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    encoder_res18 = build_encoder_res18(args, hidden_dim=OUTPUT_DIM, activation='sigmoid')
-    encoder_res18.turn_off_running_stats()
-    
+    encoder_res18 = Res18Classifier(CNN_embed_dim=256, activation="sigmoid").to(device)
+    encoder_res18.freeze_backbone()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
     # training settings
     criterion = torch.nn.BCELoss().to(device)
-    cnn_params = list(encoder_res18.parameters())
+    cnn_params = list(encoder_res18.fc.parameters())
     optimizer = torch.optim.Adam(cnn_params, lr=args.lr, weight_decay=args.wd)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
 
@@ -270,13 +256,6 @@ def main():
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
-
-    for train_el, val_el in zip(train_loader, val_loader):
-        train_images, train_seq_len, _, _, _, train_targets = unpack_batch(train_el, device)
-        val_images, val_seq_len, _, _, _, val_targets = unpack_batch(val_el, device)
-        assert torch.allclose(train_seq_len, val_seq_len), "train and val seq_len should be the same"
-        assert torch.allclose(train_images, val_images), "train and val images should be the same"
-        assert torch.allclose(train_targets, val_targets), "train and val targets should be the same"
 
     print(f'Start training, cnn-lstm-model, initail lr={args.lr}, weight-decay={args.wd}, training batch size={args.batch_size}')
     if args.output is None:
