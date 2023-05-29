@@ -14,10 +14,13 @@ class CNNEncoder(nn.Module):
         self.threshold = 0.5
         self.activation = F.relu if activation == 'relu' else F.sigmoid
 
-    def freeze_backbone(self):
-        for child in self.backbone.children():
+    def freeze_backbone(self,n_layer=None):
+        total_layers=len(list(self.backbone.children()))
+        if n_layer is None: n_layer=total_layers
+        for child in list(self.backbone.children())[:n_layer]:
             for para in child.parameters():
                 para.requires_grad = False
+        print(f"freeze {n_layer} layers out of {total_layers} layers")
 
     def turn_off_running_stats(self):
         
@@ -71,7 +74,7 @@ class Res18Classifier(CNNEncoder):
         self.fc = nn.Sequential(
             nn.Linear(512, CNN_embed_dim),
             nn.ReLU(),
-            nn.Linear(CNN_embed_dim, 2),
+            nn.Linear(CNN_embed_dim, 1),
         )
 
 
