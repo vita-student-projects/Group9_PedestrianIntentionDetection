@@ -7,7 +7,7 @@ from src.dataset.loader import *
 from src.model.basenet import *
 from src.model.baselines import *
 from src.model.models import *
-from src.transform.preprocess import *
+from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
 from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
@@ -204,13 +204,15 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     balance = False if image_set == "test" else True
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
 
-    jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
+    resize_preprocess = ResizeFrame(resize_ratio=0.5)
+
     if image_set == 'train':
-        TRANSFORM = Compose([ImageTransform(torchvision.transforms.ColorJitter(
+        TRANSFORM = Compose([resize_preprocess, 
+                             ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     else:
-        TRANSFORM = None
+        TRANSFORM = resize_preprocess    
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -225,8 +227,6 @@ def main():
     )
     run_name = wandb.run.name
     
-    args.lr = wandb.config.learning_rate
-
     # define our custom x axis metric
     for setup in ['train', 'val']:
         wandb.define_metric(f"{setup}/epoch")
@@ -254,6 +254,7 @@ def main():
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
     print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder train: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
+    wandb.watch((encoder_res18, decoder_lstm), log_freq=10)
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     crnn_params = list(encoder_res18.fc.parameters()) + list(decoder_lstm.parameters())
