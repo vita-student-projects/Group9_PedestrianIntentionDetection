@@ -113,7 +113,7 @@ class RandomHflip(Preprocess):
         image, anns['bbox'] = random_flip(image, bbox, self.probability)
 
         return image, anns
-        
+    
 
 class JitterBox(Preprocess):
     """
