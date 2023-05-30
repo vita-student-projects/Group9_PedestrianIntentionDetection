@@ -86,6 +86,63 @@ class Res18RoIEncoder(CNNEncoder):
         self.backbone = resnet
         self.fc = nn.Linear(1024, CNN_embed_dim)
 
+class Res18RoIEncoder_new(nn.Module):
+    """
+    CNN-encoder with ResNet-18 backbone
+    Input: a sequence of  RGB images Tx3xHxW (0<T<T_max)
+    Output: T_max x 1 x CNN_embed_dim feature vector
+    """
+    def __init__(self, resnet, CNN_embed_dim=256, activation='relu'):
+        super().__init__()
+        self.threshold = 0.5
+        self.activation = F.relu if activation == 'relu' else F.sigmoid
+        self.backbone = resnet
+        self.fc = nn.Linear(1024, CNN_embed_dim)
+
+    def freeze_backbone(self):
+        for child in self.backbone.children():
+            for para in child.parameters():
+                para.requires_grad = False
+
+    def turn_off_running_stats(self):
+        
+        def _turn_off_running_stats_recursive(module):    
+            if isinstance(module, torch.nn.BatchNorm2d):
+                module.track_running_stats = False
+                module.running_mean = None
+                module.running_var = None
+                return
+            for child in module.children():
+                _turn_off_running_stats_recursive(child)
+
+        _turn_off_running_stats_recursive(self.backbone)
+
+
+    def forward(self, x_5d, x_lengths,pv):
+        x_seq = []
+        batch_size = x_5d.size(0)
+        for i in range(batch_size):
+            cnn_embed_seq = []
+            for t in range(x_lengths[i]):
+                img = x_5d[i, t, :, :, :]
+                bb=pv[i,t,:]
+                print(bb)
+                print("bb size:",bb.size())
+                x = self.backbone(torch.unsqueeze(img,dim=0),bb)  
+                x = self.fc(x)
+                x = self.activation(x)
+                x = x.view(x.size(0), -1) # flatten output of conv
+                cnn_embed_seq.append(x)                    
+            # swap time and sample dim such that (sample dim=1, time dim, CNN latent dim)
+            embed_seq = torch.stack(cnn_embed_seq, dim=0).transpose_(0, 1)
+            embed_seq = torch.squeeze(embed_seq, 1)
+            fea_dim = embed_seq.shape[-1]
+            embed_seq = embed_seq.view(-1,fea_dim)
+            x_seq.append(embed_seq)
+        
+        x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
+        return x_padded
+    
 
 class DecoderRNN_IMBS(nn.Module):
     def __init__(self, CNN_embeded_size=256, h_RNN_layers=1, h_RNN_0=256, h_RNN_1=64,
@@ -232,7 +289,7 @@ def build_encoder_res18(args, hidden_dim=256, activation='relu'):
          res18_roi.dropout = torch.nn.Identity()
          res18_roi.act = torch.nn.Identity()
          # encoder
-         encoder_cnn = Res18RoIEncoder(encoder=res18_roi, CNN_embed_dim=hidden_dim, activation=activation)
+         encoder_cnn = Res18RoIEncoder(resnet=res18_roi, CNN_embed_dim=hidden_dim, activation=activation)
     encoder_cnn.to(device)
     return encoder_cnn
 
