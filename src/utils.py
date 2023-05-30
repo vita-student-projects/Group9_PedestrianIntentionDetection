@@ -1,9 +1,11 @@
 import torch
-import sys
 import os
 import numpy as np
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, precision_score, recall_score
 import random
+import wandb
+from pathlib import Path
+import datetime
 
 def save_to_checkpoint(save_path, epoch, model, optimizer, scheduler=None, verbose=True):
     # save checkpoint to disk
@@ -142,6 +144,54 @@ def find_best_threshold(preds, targets):
     return best_thr, best_f1
 
 
+def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
+    binarized_preds = (preds > best_thr).astype(int)
+    precision = precision_score(targets, binarized_preds)
+    recall = recall_score(targets, binarized_preds)
+
+    wandb.log({f'{mode}/precision': precision , 
+               f'{mode}/recall': recall, 
+               f'{mode}/f1': best_f1, 
+               f'{mode}/AP': ap, 
+               f'{mode}/best_thr': best_thr,
+               f"{mode}/preds": wandb.Histogram(preds),
+               f'{mode}/epoch': step}, commit=True)
+    
+    print('------------------------------------------------')
+    print(f'Mode: {mode}')
+    print(f'best threshold: {best_thr:.3f}')
+    print(f'precision: {precision:.3f}')
+    print(f'recall: {recall:.3f}')
+    print(f'F1-score : {best_f1:.3f}')
+    print(f"average precision for transition prediction: {ap:.3f}")
+    print('\n')
+
+
+def log_to_stdout(epoch, train_loss, val_loss, val_f1, end_epoch_time):
+    print('\n', '-----------------------------------------------------')
+    print(f'End of epoch {epoch}')
+    print('Training epoch loss: {:.4f}'.format(train_loss))
+    print('Validation epoch loss: {:.4f}'.format(val_loss))
+    print('Validation epoch f1: {:.4f}'.format(val_f1))
+    print('Epoch time: {:.2f}'.format(end_epoch_time))
+    print('--------------------------------------------------------', '\n')
+
+
+def setup_wandb(args, run_type):
+    args.run_type = run_type
+    wandb.init(
+        project="dlav-intention-prediction",
+        config=args,
+    )
+    run_name = wandb.run.name
+
+    # define our custom x axis metric
+    for setup in ['train', 'val']:
+        wandb.define_metric(f"{setup}/epoch")
+        wandb.define_metric(f"{setup}/*", step_metric=f"{setup}/epoch")
+    return run_name
+
+
 def seed_torch(seed=1):
     random.seed(seed)
     np.random.seed(seed)
@@ -152,3 +202,11 @@ def seed_torch(seed=1):
     n_gpu = torch.cuda.device_count()
     if n_gpu > 0:
         torch.cuda.manual_seed_all(seed)
+
+
+def prepare_cp_path(args, run_name, run_mode):
+    cp_dir = Path(f'./checkpoints/{run_name}')
+    cp_dir.mkdir(parents=True, exist_ok=True)
+    save_path = cp_dir / f'{run_mode}_lr{args.lr}_wd{args.wd}_JAAD_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
+    print(f'Saving the model to: {save_path}')
+    return Path(save_path)
