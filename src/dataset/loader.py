@@ -478,7 +478,7 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
     Basic dataloader for loading sequence/history samples
     """
 
-    def __init__(self, samples, image_dir, preprocess=None, hflip_p=0.0):
+    def __init__(self, samples, image_dir, preprocess=None, hflip_p=0.0, load_image=True):
         """
         :params: samples: pedestrian trajectory samples(dict)
                 image_dir: root dir for images extracted from video clips
@@ -489,6 +489,7 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
         self.preprocess = preprocess
         self.hflip_p = hflip_p
         self._to_tensor = torchvision.transforms.ToTensor()
+        self.load_image = load_image
 
     def __getitem__(self, index):
         sample_id = self.samples[index]['sample_id']
@@ -498,30 +499,25 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
         behavior = torch.tensor(self.samples[index]['behavior'], dtype=torch.float32)
         bbox = copy.deepcopy(self.samples[index]['bbox'])
         label = self.samples[index]['label']
-        bbox_new = []
         bbox_ped_new = []
-        image_path = None
-        # image paths
         img_tensors = []
         hflip = True if float(torch.rand(1).item()) < self.hflip_p else False
         for i in range(len(frames)):
             anns = {'bbox': bbox[i]}
-            vid = self.samples[index]['video_number']
-            image_path = os.path.join(self.image_dir['JAAD'], vid, '{:05d}.png'.format(frames[i]))
-            with open(image_path, 'rb') as f:
-                img = PIL.Image.open(f).convert('RGB')
-            if hflip:
-                img = flip_image_and_bbox(img, anns)
-            if self.preprocess is not None:
-                img, anns = self.preprocess(img, anns)
-            anns['bbox_ped'] =  copy.deepcopy(anns['bbox'])
-            img_tensors.append(img)
-            bbox_new.append(anns['bbox'])
-            bbox_ped_new.append(anns['bbox_ped'])
+            if self.load_image:
+                vid = self.samples[index]['video_number']
+                image_path = os.path.join(self.image_dir['JAAD'], vid, '{:05d}.png'.format(frames[i]))
+                with open(image_path, 'rb') as f:
+                    img = PIL.Image.open(f).convert('RGB')
+                if hflip:
+                    img = flip_image_and_bbox(img, anns)
+                if self.preprocess is not None:
+                    img, anns = self.preprocess(img, anns)
+                img_tensors.append(img)
+                img_tensors = torch.stack(img_tensors)
+            bbox_ped_new.append(copy.deepcopy(anns['bbox']))
     
-        img_tensors = torch.stack(img_tensors)
-        seq_len = img_tensors.size(0)
-        # TODO: why not long?
+        seq_len = len(frames)
         label = torch.tensor(label, dtype=torch.float32)
 
         sample = {'image': img_tensors, 'bbox': bbox_ped_new, 'bbox_ped': bbox_ped_new, 
