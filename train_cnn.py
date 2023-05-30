@@ -31,14 +31,12 @@ def get_args():
                         help='use TITAN dataset')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
-    parser.add_argument('--pred', default=10, type=int,
+    parser.add_argument('--pred', default=5, type=int,
                         help='prediction length, predicting-ahead time')
     parser.add_argument('--balancing-ratio', default=1.0, type=float,
                         help='ratio of balanced instances(1/0)')
     parser.add_argument('--seed', default=99, type=int,
                         help='random seed for sampling')
-    parser.add_argument('--bbox-min', default=0, type=int,
-                        help='minimum bbox size')
     parser.add_argument('--encoder-type', default='CC', type=str,
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
@@ -107,7 +105,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
 def val_epoch(loader, model, criterion, device, epoch):
     encoder_CNN = model['encoder']
     # switch to evaluate mode 
-    encoder_CNN.eval()
+    encoder_CNN.fc.eval()
 
     epoch_loss = 0.0
 
@@ -144,8 +142,8 @@ def val_epoch(loader, model, criterion, device, epoch):
 def eval_model(loader, model, device):
     # swith to evaluate mode
     encoder_CNN = model['encoder']
-    encoder_CNN.eval()
-
+    encoder_CNN.fc.eval()
+    
     batch_size = loader.batch_size
     n_steps = len(loader)
 
