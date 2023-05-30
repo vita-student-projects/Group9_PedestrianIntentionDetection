@@ -173,6 +173,38 @@ class CRNNClassifier(nn.Module):
         return pred
 
 
+class RNNClassifier(nn.Module):
+    def __init__(self, input_size, rnn_embeding_size=256, classification_head_size=128, drop_p=0.2, h_RNN_layers=1):
+        super().__init__()
+        self.threshold = 0.5
+    
+        self.RNN = nn.LSTM(
+            input_size=input_size,
+            hidden_size=rnn_embeding_size,        
+            num_layers=h_RNN_layers,       
+            batch_first=True,       #  (batch, time_step, input_size)
+        )
+
+        self.classification_head = nn.Sequential(
+            nn.Linear(rnn_embeding_size, classification_head_size),
+            nn.ReLU(),
+            nn.Dropout(p=drop_p),
+            nn.Linear(classification_head_size, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, input_seq, seq_lengths):  
+
+        packed_inputs = torch.nn.utils.rnn.pack_padded_sequence(input_seq, seq_lengths, 
+                                                                batch_first=True, enforce_sorted=False)
+        # TODO: why?
+        self.RNN.flatten_parameters()
+        packed_RNN_out, _ = self.RNN(packed_inputs, None)
+        RNN_out, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_RNN_out, batch_first=True)
+        RNN_out = RNN_out[:, -1, :].contiguous()
+        pred = self.classification_head(RNN_out).unsqueeze(-1)
+        return pred
+
 class DecoderRNN_IMBS(nn.Module):
     def __init__(self, CNN_embeded_size=256, h_RNN_layers=1, h_RNN_0=256, h_RNN_1=64,
                  h_RNN_2=16, h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2):
