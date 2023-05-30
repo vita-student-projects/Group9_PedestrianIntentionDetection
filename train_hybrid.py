@@ -204,8 +204,6 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     balance = False if image_set == "test" else True
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
 
-    resize_preprocess = ResizeFrame(resize_ratio=0.5)
-
     crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
         TRANSFORM = Compose([

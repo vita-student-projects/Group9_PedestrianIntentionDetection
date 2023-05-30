@@ -194,7 +194,6 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     balance = False if image_set == "test" else True
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
 
-    resize_preprocess = ResizeFrame(resize_ratio=0.5)
     crop_with_background = CropBoxWithBackgroud(size=224)
     normalization = torchvision.transforms.Normalize([0., 0., 0.], [1., 1., 1.])
     if image_set == 'train':

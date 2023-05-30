@@ -514,8 +514,9 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
                 if self.preprocess is not None:
                     img, anns = self.preprocess(img, anns)
                 img_tensors.append(img)
-                img_tensors = torch.stack(img_tensors)
             bbox_ped_new.append(copy.deepcopy(anns['bbox']))
+        
+        img_tensors = torch.stack(img_tensors) if self.load_image else torch.tensor([])
     
         seq_len = len(frames)
         label = torch.tensor(label, dtype=torch.float32)
