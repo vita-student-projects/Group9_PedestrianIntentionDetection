@@ -133,7 +133,7 @@ def count_parameters(model):
 def find_best_threshold(preds, targets):
     best_f1 = 0
     best_thr = None
-    for thr in np.linspace(0, 1, 10):
+    for thr in np.linspace(0, 1, 50):
         preds_thr = (preds > thr).astype(int)
         f1 = f1_score(targets, preds_thr)
         if f1 > best_f1:

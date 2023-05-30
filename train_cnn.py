@@ -8,7 +8,7 @@ from src.dataset.loader import IntentionSequenceDataset, define_path
 from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
-from src.model.models import Res18Classifier
+from src.model.models import build_encoder_res18,Res18Classifier
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
@@ -19,6 +19,9 @@ from src.early_stopping import EarlyStopping, load_from_checkpoint
 # only training the CNN on a signle frame
 MAX_FRAMES = 1
 OUTPUT_DIM = 1
+
+MEAN = [0.3104, 0.2813, 0.2973]
+STD = [0.1761, 0.1722, 0.1673]
 
 
 def get_args():
@@ -101,8 +104,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
-    return epoch_loss
-
+    return epoch_loss 
 
 @torch.no_grad()
 def val_epoch(loader, model, criterion, device, epoch):
@@ -156,9 +158,6 @@ def eval_model(loader, model, device):
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
-        if step == 0:
-            print(targets)
-            print(outputs_CNN)
         
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
@@ -201,18 +200,21 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 
     resize_preprocess = ResizeFrame(resize_ratio=0.5)
     crop_with_background = CropBoxWithBackgroud(size=224)
-    normalization = torchvision.transforms.Normalize([0., 0., 0.], [1., 1., 1.])
     if image_set == 'train':
         TRANSFORM = Compose([
                              crop_with_background,
-                             ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)),
-                             normalization,
-                            ])
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                                     torchvision.transforms.ToTensor(),
+                                     torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ),
+                           ])
     else:
         TRANSFORM = Compose([
                             crop_with_background,
-                            normalization
+                            ImageTransform(torchvision.transforms.Normalize(MEAN, STD)),
                             ])
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
@@ -226,9 +228,6 @@ def main():
         config=args,
     )
     run_name = wandb.run.name
-    
-    #args.lr = wandb.config.learning_rate
-    #args.wd = wandb.config.weight_decay
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
@@ -249,6 +248,9 @@ def main():
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = Res18Classifier(CNN_embed_dim=args.cnn_embed_dim, activation="sigmoid").to(device)
+    # encoder_res18.turn_off_running_stats()
+    print(f'Number of cnnencoder parameters: encoder: {count_parameters(encoder_res18)}') 
+    # freeze CNN-encoder during training
     encoder_res18.freeze_backbone()
     encoder_res18.eval()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
