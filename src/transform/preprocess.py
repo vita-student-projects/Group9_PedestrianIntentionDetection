@@ -131,3 +131,11 @@ class JitterBox(Preprocess):
 
         return image, anns
 
+class Normalization(Preprocess):
+    # Normaliza the image
+    def __init__(self):
+        self.mean=[]
+        self.std=[]
+    def __call__(self,image,anns):
+        image=transforms.Normalize(self.mean, self.std)(image) # normalization
+        return image,anns
