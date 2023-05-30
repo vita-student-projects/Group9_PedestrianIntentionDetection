@@ -213,8 +213,13 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                            ])
     else:
         TRANSFORM = Compose([
-                            crop_with_background,
-                            ImageTransform(torchvision.transforms.Normalize(MEAN, STD)),
+                             crop_with_background,
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ToTensor(), 
+                                     torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ) 
                             ])
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
