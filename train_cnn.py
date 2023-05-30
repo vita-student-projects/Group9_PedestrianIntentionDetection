@@ -196,14 +196,19 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 
     resize_preprocess = ResizeFrame(resize_ratio=0.5)
     crop_with_background = CropBoxWithBackgroud(size=224)
+    normalization = torchvision.transforms.Normalize([0., 0., 0.], [1., 1., 1.])
     if image_set == 'train':
-        TRANSFORM = Compose([#resize_preprocess, 
+        TRANSFORM = Compose([
                              crop_with_background,
                              ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
-                               ])
+                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)),
+                             normalization,
+                            ])
     else:
-        TRANSFORM = crop_with_background #resize_preprocess
+        TRANSFORM = Compose([
+                            crop_with_background,
+                            normalization
+                            ])
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
