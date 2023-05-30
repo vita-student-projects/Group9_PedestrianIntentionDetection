@@ -205,12 +205,14 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
 
     jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
+    resize_preprocess = ResizeFrame(resize_ratio=0.5)
     if image_set == 'train':
-        TRANSFORM = Compose([ImageTransform(torchvision.transforms.ColorJitter(
+        TRANSFORM = Compose([   resize_preprocess,
+                                ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     else:
-        TRANSFORM = None
+        TRANSFORM = resize_preprocess#Compose([resize_preprocess,normalize_preprocess])
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -225,7 +227,7 @@ def main():
     )
     run_name = wandb.run.name
     
-    args.lr = wandb.config.learning_rate
+    # args.lr = wandb.config.learning_rate
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
