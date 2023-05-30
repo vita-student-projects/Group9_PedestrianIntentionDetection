@@ -3,25 +3,16 @@ import numpy as np
 import torch
 from tqdm import tqdm
 from sklearn.metrics import average_precision_score, classification_report
-from src.dataset.trans.data import *
-from src.dataset.loader import *
-from src.model.basenet import *
-from src.model.baselines import *
-from src.model.models import *
-from src.transform.preprocess import *
-from src.utils import *
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
+from src.early_stopping import EarlyStopping, load_from_checkpoint
+from src.model.models import Res18Classifier
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description='cropped frame model Training')
+    parser = argparse.ArgumentParser(description='cropped frame model evaluation')
 
     parser.add_argument('--jaad', default=True, action='store_true',
                         help='use JAAD dataset')
-    parser.add_argument('--pie', default=False, action='store_true',
-                        help='use PIE dataset')
-    parser.add_argument('--titan', default=False, action='store_true',
-                        help='use TITAN dataset')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
     parser.add_argument('--max-frames', default=5, type=int,
@@ -32,20 +23,12 @@ def get_args():
                         help='ratio of balanced instances(1/0)')
     parser.add_argument('--jitter-ratio', default=-1.0, type=float,
                         help='jitter bbox for cropping')
-    parser.add_argument('--bbox-min', default=0, type=int,
-                        help='minimum bbox size')
     parser.add_argument('-s', '--seed', type=int, default=99,
                         help='set random seed for sampling')
-
-    parser.add_argument('--encoder-type', default='CC', type=str,
-                        help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
                         help='load pretrained encoder')
-    parser.add_argument('--encoder-path', default='', type=str,
-                        help='path to encoder checkpoint for loading the pretrained weights')
-    parser.add_argument('--decoder-path', default='', type=str,
-                        help='path to LSTM decoder checkpoints')
-
+    parser.add_argument('--checkpoint-path', default='', type=str,
+                        help='path to the checkpoint for loading pretrained weights')
     args = parser.parse_args()
 
     return args
@@ -108,24 +91,22 @@ def main():
         fps=args.fps,
         prediction_frames=args.pred, 
         verbose=True)
+    
     eval_intent_sequences_cropped = subsample_and_balance(
         eval_intent_sequences,
         balance=False, 
         max_frames=args.max_frames, 
         seed=args.seed)
-    print('------------------------------------------------------------------')
-    print('Finish annotation loading', '\n')
 
     # load model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    encoder_res18 = build_encoder_res18(args)
-    decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
-                                    h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
-    decoder_path = args.decoder_path
-    _ = load_from_checkpoint(decoder_path, decoder_lstm, optimizer=None, scheduler=None, verbose=True)
-    model_gpu = {'encoder': encoder_res18, 'decoder': decoder_lstm}
-    jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
+    encoder_res18 = Res18Classifier(CNN_embed_dim=256, activation="sigmoid").to(device)
+    encoder_res18.eval()
+
+    model = {'encoder': encoder_res18}
+    load_from_checkpoint(model, args.checkpoint_path)
+
     crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
     VAL_TRANSFORM = crop_preprocess
     # val_instances = PaddedSequenceDataset(sequences_eval, image_dir=image_dir_eval, padded_length=args.max_frames,
