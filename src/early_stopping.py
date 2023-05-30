@@ -28,7 +28,7 @@ class EarlyStopping:
         if self.best_score is None:
             self.best_score = score
             self.save_checkpoint(score, model, optimizer, epoch)
-        elif score < self.best_score + self.delta:
+        elif score <= self.best_score + self.delta:
             self.counter += 1
             print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
@@ -45,11 +45,23 @@ class EarlyStopping:
         if self.verbose:
             print(f'Validation score changed  ({self.best_score:.6f} --> {score:.6f}).  Saving model ...')
 
-        torch.save({
+        cp_dict = {
             'epoch': epoch,
-            'encoder_state_dict': model['encoder'].state_dict(),
-            'decoder_state_dict': model['decoder'].state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'score': score,
-            }, self.checkpoint)
+        }
+        if 'encoder' in model:
+            cp_dict['encoder_state_dict'] = model['encoder'].state_dict()
+        if 'decoder' in model:
+            cp_dict['decoder_state_dict'] = model['decoder'].state_dict()
+
+        torch.save(cp_dict, self.checkpoint)
         
+
+def load_from_checkpoint(model, save_path):
+    device = torch.device('cpu') if not torch.cuda.is_available() else torch.device('cuda')
+    checkpoint = torch.load(save_path, map_location=device)
+    if 'encoder' in model:
+        model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
+    if 'decoder' in model:
+        model['decoder'].load_state_dict(checkpoint['decoder_state_dict'])

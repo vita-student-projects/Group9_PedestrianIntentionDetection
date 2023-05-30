@@ -7,14 +7,14 @@ from src.dataset.loader import *
 from src.model.basenet import *
 from src.model.baselines import *
 from src.model.models import *
-from src.transform.preprocess import *
+from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
-from src.early_stopping import EarlyStopping
+from src.early_stopping import EarlyStopping, load_from_checkpoint
 
 
 def get_args():
@@ -51,7 +51,7 @@ def get_args():
                         metavar='N', help='mini-batch size (default: 4)')
     parser.add_argument('-e', '--epochs', default=10, type=int,
                         help='number of epochs to train')
-    parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-5,
+    parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-4,
                         help='Weight decay', dest='wd')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
@@ -70,7 +70,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
 
-    encoder_CNN.train()
+    encoder_CNN.fc.train()
     decoder_RNN.train()
     epoch_loss = 0.0
 
@@ -96,13 +96,14 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-        wandb.log({'train/loss': curr_loss, 'train/step': epoch * n_steps + step}, commit=True)
+    epoch_loss /= n_steps
+    wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = decoder_RNN.threshold
     f1 = f1_score(tgts, preds > best_thr)
-    log_metrics(tgts, preds, best_thr, f1, train_score, 'train', (epoch + 1) * n_steps)
+    log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
-    return epoch_loss / len(loader)
+    return epoch_loss
 
 
 @torch.no_grad()
@@ -133,14 +134,15 @@ def val_epoch(loader, model, criterion, device, epoch):
         curr_loss = loss.item()
         epoch_loss += curr_loss
 
-    wandb.log({'val/loss': epoch_loss / n_steps, 'val/step': (epoch + 1) * n_steps})
+    epoch_loss /= n_steps
+    wandb.log({'val/loss': epoch_loss, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     decoder_RNN.threshold = best_thr
 
     val_score = average_precision_score(tgts, preds)
-    log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', (epoch + 1) * n_steps)
+    log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
 
-    return epoch_loss / len(loader), val_score
+    return epoch_loss, best_f1
 
 
 @torch.no_grad()
@@ -171,7 +173,6 @@ def eval_model(loader, model, device):
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'test', 0)
     preds = preds > best_thr
-
     print(classification_report(tgts, preds))
 
 
@@ -186,7 +187,7 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
                f'{mode}/AP': ap, 
                f'{mode}/best_thr': best_thr,
                f"{mode}/preds": wandb.Histogram(preds),
-               f'{mode}/step': step}, commit=True)
+               f'{mode}/epoch': step}, commit=True)
     
     print('------------------------------------------------')
     print(f'Mode: {mode}')
@@ -203,15 +204,31 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     balance = False if image_set == "test" else True
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
 
-    jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
-    crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
+    resize_preprocess = ResizeFrame(resize_ratio=0.5)
+
+    crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
-        TRANSFORM = Compose([crop_preprocess,
-                               ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
-                               ])
+        TRANSFORM = Compose([
+                             crop_with_background,
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                                     torchvision.transforms.ToTensor(),
+                                     #torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ),
+                           ])
     else:
-        TRANSFORM = crop_preprocess
+        TRANSFORM = Compose([
+                             crop_with_background,
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ToTensor(), 
+                                     #torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ) 
+                            ])
+
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -226,13 +243,12 @@ def main():
     )
     run_name = wandb.run.name
     
-    args.lr = wandb.config.learning_rate
-    args.wd = wandb.config.weight_decay
+    # args.lr = wandb.config.learning_rate
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
-        wandb.define_metric(f"{setup}/step")
-        wandb.define_metric(f"{setup}/*", step_metric=f"{setup}/step")
+        wandb.define_metric(f"{setup}/epoch")
+        wandb.define_metric(f"{setup}/*", step_metric=f"{setup}/epoch")
 
     # loading data
     print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
@@ -248,14 +264,16 @@ def main():
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = build_encoder_res18(args)
+    print(f'Number of cnnencoder parameters: encoder: {count_parameters(encoder_res18)}')
+    encoder_res18.eval()
     # freeze CNN-encoder during training
     encoder_res18.freeze_backbone()
 
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
-    
-    print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder: {count_parameters(encoder_res18)}')
+    print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder train: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
+    wandb.watch((encoder_res18, decoder_lstm), log_freq=10)
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     crnn_params = list(encoder_res18.fc.parameters()) + list(decoder_lstm.parameters())
@@ -275,18 +293,22 @@ def main():
     if args.output is None:
         cp_dir = Path(f'./checkpoints/{run_name}')
         cp_dir.mkdir(parents=True, exist_ok=True)
-        save_path = f'{cp_dir}/Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
+        save_path = cp_dir / f'Decoder_IMBS_lr{args.lr}_wd{args.wd}_{ds}_mf{args.max_frames}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
+        print(f'Saving the model to: {save_path}')
     else:
         save_path = args.output
     early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)
 
     # start training
+    best_f1 = 0.0
     for epoch in range(args.epochs):
         start_epoch_time = time.time()
         train_loss = train_epoch(train_loader, model, criterion, optimizer, device, epoch)
-        val_loss, val_score = val_epoch(val_loader, model, criterion, device, epoch)
-        scheduler.step(val_score)
-        early_stopping(val_score, model, optimizer, epoch)
+        val_loss, val_f1 = val_epoch(val_loader, model, criterion, device, epoch)
+        best_f1 = max(best_f1, val_f1)
+        scheduler.step(val_f1)
+        early_stopping(val_f1, model, optimizer, epoch)
+        wandb.log({"val/best_f1": best_f1, "val/epoch": epoch})
         if early_stopping.early_stop:
             print(f'Early stopping after {epoch} epochs...')
             break
@@ -295,7 +317,7 @@ def main():
         print(f'End of epoch {epoch}')
         print('Training epoch loss: {:.4f}'.format(train_loss))
         print('Validation epoch loss: {:.4f}'.format(val_loss))
-        print('Validation epoch score (AP): {:.4f}'.format(val_score))
+        print('Validation epoch f1: {:.4f}'.format(val_f1))
         print('Epoch time: {:.2f}'.format(end_epoch_time))
         print('--------------------------------------------------------', '\n')
         total_time += end_epoch_time
@@ -304,6 +326,7 @@ def main():
     print('total time: {:.2f}'.format(total_time))
     
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    load_from_checkpoint(model, save_path)
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on test set, jitter={args.jitter_ratio}')
     eval_model(test_loader, model, device)

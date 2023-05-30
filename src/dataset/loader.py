@@ -30,43 +30,43 @@ def define_path(use_jaad=True, use_pie=True, use_titan=True):
     # anns:/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl
     # split:DATA/annotations/JAAD/splits/
     # image JAAD:/work/scitas-share/datasets/Vita/civil-459/JAAD/images
-    all_anns_paths = {'JAAD': {'anns': '/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl',
-                               'split': 'DATA/annotations/JAAD/splits/'},
+    # all_anns_paths = {'JAAD': {'anns': '/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl',
+    #                            'split': 'DATA/annotations/JAAD/splits/'},
+    #                   'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
+    #                   'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
+    #                             'split': '/work/vita/datasets/TITAN/splits/'}
+    #                   }
+    # # change from JAAD images: '/work/vita/datasets/JAAD/images/' to 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images'
+    # all_image_dir = {'JAAD': '/work/scitas-share/datasets/Vita/civil-459/JAAD/images',
+    #                  'PIE': '/work/vita/datasets/PIE/images/',
+    #                  'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
+    #                  }
+    # Uncomment it when running on Jessica's computer
+    # change from JAAD anns: 'TransNet/DATA/JAAD_DATA.pkl' to 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
+    # change from JAAD split: '/work/vita/datasets/JAAD/split_ids/' to 'DATA/annotations/JAAD/splits'
+    all_anns_paths = {'JAAD': {'anns': 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl',
+                               'split': 'DATA/annotations/JAAD/splits'},
                       'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
                       'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
                                 'split': '/work/vita/datasets/TITAN/splits/'}
                       }
     # change from JAAD images: '/work/vita/datasets/JAAD/images/' to 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images'
-    all_image_dir = {'JAAD': '/work/scitas-share/datasets/Vita/civil-459/JAAD/images',
+    all_image_dir = {'JAAD': 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images',
                      'PIE': '/work/vita/datasets/PIE/images/',
                      'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
                      }
-    # Uncomment it when running on Jessica's computer
+
+    # Uncomment it when running on Arina's computer
     # change from JAAD anns: 'TransNet/DATA/JAAD_DATA.pkl' to 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
     # change from JAAD split: '/work/vita/datasets/JAAD/split_ids/' to 'DATA/annotations/JAAD/splits'
     # all_anns_paths = {'JAAD': {'anns': 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl',
     #                            'split': 'DATA/annotations/JAAD/splits'},
     #                   'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
     #                   'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
-    #                             'split': '/work/vita/datasets/TITAN/splits/'}
-    #                   }
-    # # change from JAAD images: '/work/vita/datasets/JAAD/images/' to 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images'
-    # all_image_dir = {'JAAD': 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images',
-    #                  'PIE': '/work/vita/datasets/PIE/images/',
-    #                  'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
-    #                  }
-
-    # Uncomment it when running on Arina's computer
-    # change from JAAD anns: 'TransNet/DATA/JAAD_DATA.pkl' to 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
-    # change from JAAD split: '/work/vita/datasets/JAAD/split_ids/' to 'DATA/annotations/JAAD/splits'
-    #all_anns_paths = {'JAAD': {'anns': 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl',
-    #                            'split': 'DATA/annotations/JAAD/splits'},
-    #                   'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
-    #                   'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
     #                            'split': '/work/vita/datasets/TITAN/splits/'}
     #                   }
 
-    #all_image_dir = {'JAAD': 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images',
+    # all_image_dir = {'JAAD': '/Users/arinaruck/Desktop/courses/CIVIL459-PedestrianIntensionDetection/DATA/images/JAAD/',
     #                  'PIE': '/work/vita/datasets/PIE/images/',
     #                  'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
     #                  }
@@ -512,10 +512,10 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
                 img = PIL.Image.open(f).convert('RGB')
             if hflip:
                 img = flip_image_and_bbox(img, anns)
-            anns['bbox_ped'] =  copy.deepcopy(anns['bbox'])
             if self.preprocess is not None:
                 img, anns = self.preprocess(img, anns)
-            img_tensors.append(self._to_tensor(img))
+            anns['bbox_ped'] =  copy.deepcopy(anns['bbox'])
+            img_tensors.append(img)
             bbox_new.append(anns['bbox'])
             bbox_ped_new.append(anns['bbox_ped'])
     

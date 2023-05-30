@@ -68,14 +68,14 @@ def get_pedb_info_jaad(annotations, vid):
         # attribute vector
         # scene description
         atr_vec = [0, 0, 0, 0, 0]
-        atr_vec[0] = dataset[vid]['ped_annotations'][idx]['attributes']['num_lanes']
-        atr_vec[1] = dataset[vid]['ped_annotations'][idx]['attributes']['intersection']
-        atr_vec[2] = dataset[vid]['ped_annotations'][idx]['attributes']['designated']
+        #atr_vec[0] = dataset[vid]['ped_annotations'][idx]['attributes']['num_lanes']
+        #atr_vec[1] = dataset[vid]['ped_annotations'][idx]['attributes']['intersection']
+        #atr_vec[2] = dataset[vid]['ped_annotations'][idx]['attributes']['designated']
         # TODO: why always 1? 'signalized': {'n/a': 0, 'NS': 1, 'S': 2},
         #if dataset[vid]['ped_annotations'][idx]['attributes']['signalized'] > 0:
-        atr_vec[3] = dataset[vid]['ped_annotations'][idx]['attributes']['signalized'] 
+        #atr_vec[3] = dataset[vid]['ped_annotations'][idx]['attributes']['signalized'] 
         # 'traffic_direction': {'OW': 0, 'TW': 1},
-        atr_vec[4] = dataset[vid]['ped_annotations'][idx]['attributes']['traffic_direction']
+        #atr_vec[4] = dataset[vid]['ped_annotations'][idx]['attributes']['traffic_direction']
         pedb_info[idx]['attributes'] = copy.deepcopy(atr_vec)
 
     return pedb_info
@@ -137,7 +137,8 @@ def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", su
                     pedb_dataset[idx][attribute] = pedb_info[idx][attribute][::fps_step]
                 pedb_dataset[idx]['attributes'] = pedb_info[idx]['attributes']
     add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, verbose=verbose)
-    return pedb_dataset
+    return pedb_dataset    
+
 
 def subsample_and_balance(intention_dataset, balance, max_frames=MAX_FRAMES, seed=SEED):
     random.seed(seed)
@@ -173,6 +174,7 @@ def subsample_and_balance(intention_dataset, balance, max_frames=MAX_FRAMES, see
     else:
         balanced_new_samples = new_samples
     random.shuffle(balanced_new_samples)
+    print(f"Total number of samples before and after balancing: {len(new_samples)}, {len(balanced_new_samples)}")
     return balanced_new_samples
 
 

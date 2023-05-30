@@ -8,13 +8,15 @@ command:
   - "5"
   - "--epochs"
   - 50
-name: 'grid sweep v2'
+  - "--max-frames"
+  - 10
+  - "-nw"
+  - 4
+name: 'grid sweep max frames 2s, resize, no scene'
 method: grid
 metric:
-  name: val/f1
+  name: val/best_f1
   goal: maximize
 parameters:
   learning_rate:
-    values: [1e-4, 1e-3, 5e-3]
-  weight_decay:
-    values: [1e-5, 1e-4, 1e-3]
+    values: [1e-4]

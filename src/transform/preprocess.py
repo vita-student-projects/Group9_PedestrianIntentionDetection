@@ -50,6 +50,32 @@ class CropBox(Preprocess):
         img = img_pad(img, mode=self.padding_mode, size=self.size)
 
         return img, anns
+    
+
+class ResizeFrame(Preprocess):
+    def __init__(self, resize_ratio):
+        self.resize_ratio = resize_ratio
+
+    def __call__(self, image, anns):
+        bbox = anns['bbox']
+        img, bbox_new = resize(image, bbox, self.resize_ratio)
+        anns['bbox'] = bbox_new
+        return img, anns
+    
+
+class CropBoxWithBackgroud(Preprocess):
+    def __init__(self, size=224, width_ratio=2):
+        self.size = size
+        self.width_ratio = width_ratio
+
+    def __call__(self, image, anns):
+        bbox = anns['bbox']
+        bbox = squarify(bbox, self.width_ratio, image.size[0])
+        bbox = list(map(int, bbox[0:4]))
+        img = image.crop((bbox[0], bbox[1], bbox[2], bbox[3]))
+        img = img.resize((self.size * self.width_ratio, self.size))
+
+        return img, anns
 
 
 class ImageTransform(Preprocess):
