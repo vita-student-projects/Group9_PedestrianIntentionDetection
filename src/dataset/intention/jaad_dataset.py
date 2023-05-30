@@ -1,11 +1,17 @@
-import os
 import numpy as np
+import torch
 import pickle
 import copy
 import random
 from src.dataset.trans.jaad_trans import get_split_vids, get_pedb_ids_jaad
 from collections import Counter
 from src.utils import reshape_bbox, bbox_to_pv
+import torch
+from src.dataset.loader import IntentionSequenceDataset
+from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
+import torchvision
+
+
 
 JAAD_BASE_FPS = 30
 MAX_FRAMES = 5
@@ -32,6 +38,7 @@ def get_pedb_info_jaad(annotations, vid):
         # process atomic behavior label
         pedb_info[idx]['behavior'] = []
         pedb_info[idx]['traffic_light'] = []
+
         frames = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['frames'])
         bbox = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['bbox'])
         occlusion = copy.deepcopy(dataset[vid]['ped_annotations'][idx]['occlusion'])
@@ -81,13 +88,13 @@ def get_pedb_info_jaad(annotations, vid):
     return pedb_info
 
 
-def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
+def add_cross_label_jaad(dataset, prediction_frames, verbose=False, transition_only=False) -> None:
     """
     Add cross & non-cross(c/nc) labels depends on prediction frame for every frame
     """
     all_cross = 0
     total_samples = 0
-    length_filtered = 0
+    length_filtered, transition_filtered = 0, 0
     pids = list(dataset.keys())
     for idx in pids:
         frames = dataset[idx]['frames']
@@ -97,6 +104,10 @@ def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
             length_filtered += 1
             continue
         for j in range(len(frames) - prediction_frames):
+            if transition_only:
+                if dataset[idx]['cross'][j] == dataset[idx]['cross'][j + prediction_frames]:
+                    transition_filtered += 1
+                    continue
             dataset[idx]['labels'].append(dataset[idx]['cross'][j + prediction_frames])
             total_samples += 1
             crossing_share += dataset[idx]['cross'][j + prediction_frames]
@@ -115,10 +126,17 @@ def add_cross_label_jaad(dataset, prediction_frames, verbose=False) -> None:
         print("JAAD:")
         print(f'Total number of crosses: {all_cross}')
         print(f'Total number of non-crosses: {total_samples - all_cross}')
-        print(f'Filtered samples: {length_filtered}')
+        print(f'Filtered samples: {length_filtered + transition_filtered}, \
+                out of them: {length_filtered} due to length, \
+                {transition_filtered} due to lack of transition')
 
 
-def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", subset='default', fps=JAAD_BASE_FPS,  prediction_frames=PREDICTION_FRAMES, verbose=False) -> dict:
+def build_pedb_dataset_jaad(jaad_anns_path, 
+                            split_vids_path, image_set="all", 
+                            subset='default', fps=JAAD_BASE_FPS,  
+                            prediction_frames=PREDICTION_FRAMES, 
+                            verbose=False, 
+                            transition_only=False) -> dict:
     """
     Build pedestrian dataset from jaad annotations
     """
@@ -136,7 +154,7 @@ def build_pedb_dataset_jaad(jaad_anns_path, split_vids_path, image_set="all", su
                 for attribute in ['frames', 'bbox', 'action', 'occlusion', 'cross', 'behavior', 'traffic_light']:
                     pedb_dataset[idx][attribute] = pedb_info[idx][attribute][::fps_step]
                 pedb_dataset[idx]['attributes'] = pedb_info[idx]['attributes']
-    add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, verbose=verbose)
+    add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, verbose=verbose, transition_only=transition_only)
     return pedb_dataset    
 
 
@@ -203,7 +221,7 @@ class JaadIntentionDataset:
 
 def unpack_batch(batch, device):
     targets = batch['label'].to(device, non_blocking=True)
-    images = batch['image'].to(device, non_blocking=True)
+    images = batch['image'].to(device, non_blocking=True) if batch['image'] else torch.tensor([])
     bboxes_ped = batch['bbox_ped']
     seq_len = batch['seq_length']
     behavior = batch['behavior'].to(device, non_blocking=True)
