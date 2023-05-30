@@ -159,7 +159,7 @@ class Res18RoIEncoder_new(nn.Module):
     
 
 class RNNClassifier(nn.Module):
-    def __init__(self, input_size, rnn_embeding_size=256, classification_head_size=128, drop_p=0.2, h_RNN_layers=1):
+    def __init__(self, input_size, rnn_embeding_size=256, classification_head_size=128, drop_p=0.5, h_RNN_layers=1):
         super().__init__()
         self.threshold = 0.5
     
@@ -179,7 +179,6 @@ class RNNClassifier(nn.Module):
         )
 
     def forward(self, input_seq, seq_lengths):  
-
         packed_inputs = torch.nn.utils.rnn.pack_padded_sequence(input_seq, seq_lengths, 
                                                                 batch_first=True, enforce_sorted=False)
         # TODO: why?
@@ -189,6 +188,7 @@ class RNNClassifier(nn.Module):
         RNN_out = RNN_out[:, -1, :].contiguous()
         pred = self.classification_head(RNN_out).unsqueeze(-1)
         return pred
+
 
 class DecoderRNN_IMBS(nn.Module):
     def __init__(self, CNN_embeded_size=256, h_RNN_layers=1, h_RNN_0=256, h_RNN_1=64,

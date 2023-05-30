@@ -1,7 +1,7 @@
 import torch
 import os
 import numpy as np
-from sklearn.metrics import f1_score, precision_score, recall_score
+from sklearn.metrics import f1_score, precision_score, recall_score, classification_report, average_precision_score
 import random
 import wandb
 from pathlib import Path
@@ -210,3 +210,20 @@ def prepare_cp_path(args, run_name, run_mode):
     save_path = cp_dir / f'{run_mode}_lr{args.lr}_wd{args.wd}_JAAD_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
     print(f'Saving the model to: {save_path}')
     return Path(save_path)
+
+
+def prep_pred_storage(loader):
+    batch_size = loader.batch_size
+    n_steps = len(loader)
+
+    preds = np.zeros(n_steps * batch_size)
+    tgts = np.zeros(n_steps * batch_size)
+    return preds, tgts, n_steps, batch_size
+
+
+def print_eval_metrics(tgts, preds, best_thr):
+    train_score = average_precision_score(tgts, preds)
+    f1 = f1_score(tgts, preds > best_thr)
+    preds = preds > best_thr
+    print(f"Best threshold: {best_thr:.3f}, F1: {f1:.3f}, AP: {train_score:.3f}")
+    print(classification_report(tgts, preds))
