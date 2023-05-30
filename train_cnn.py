@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch
 import numpy as np
 from src.dataset.loader import IntentionSequenceDataset, define_path
-from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
+from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.model.models import Res18Classifier
@@ -41,6 +41,8 @@ def get_args():
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
                         help='load pretrained encoder')
+    parser.add_argument('--cnn-embed-dim', default=256, type=int, 
+                        help='load pretrained encoder')
     parser.add_argument('--encoder-path', default='', type=str,
                         help='path to encoder checkpoint for loading the pretrained weights')
     parser.add_argument('-lr', '--learning-rate', default=1e-4, type=float,
@@ -66,7 +68,7 @@ def get_args():
 
 def train_epoch(loader, model, criterion, optimizer, device, epoch):
     encoder_CNN = model['encoder']
-    encoder_CNN.train()
+    encoder_CNN.fc.train()
 
     epoch_loss = 0.0
 
@@ -198,14 +200,16 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
 
     resize_preprocess = ResizeFrame(resize_ratio=0.5)
+    crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
-        TRANSFORM = Compose([resize_preprocess, 
+        TRANSFORM = Compose([#resize_preprocess, 
+                             crop_with_background,
                              ImageTransform(torchvision.transforms.ColorJitter(
                                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
                                ])
     else:
-        TRANSFORM = resize_preprocess
-    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM)
+        TRANSFORM = crop_with_background #resize_preprocess
+    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
 
@@ -239,8 +243,9 @@ def main():
     print('Finish annotation loading', '\n')
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    encoder_res18 = Res18Classifier(CNN_embed_dim=256, activation="sigmoid").to(device)
+    encoder_res18 = Res18Classifier(CNN_embed_dim=args.cnn_embed_dim, activation="sigmoid").to(device)
     encoder_res18.freeze_backbone()
+    encoder_res18.eval()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
     # training settings
