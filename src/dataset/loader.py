@@ -515,7 +515,7 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
             if self.preprocess is not None:
                 img, anns = self.preprocess(img, anns)
             anns['bbox_ped'] =  copy.deepcopy(anns['bbox'])
-            img_tensors.append(self._to_tensor(img))
+            img_tensors.append(img)
             bbox_new.append(anns['bbox'])
             bbox_ped_new.append(anns['bbox_ped'])
     

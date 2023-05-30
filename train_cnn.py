@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch
 import numpy as np
 from src.dataset.loader import IntentionSequenceDataset, define_path
-from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
+from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.model.models import build_encoder_res18,Res18Classifier
@@ -19,6 +19,9 @@ from src.early_stopping import EarlyStopping, load_from_checkpoint
 # only training the CNN on a signle frame
 MAX_FRAMES = 1
 OUTPUT_DIM = 1
+
+MEAN = [0.3104, 0.2813, 0.2973]
+STD = [0.1761, 0.1722, 0.1673]
 
 
 def get_args():
@@ -40,6 +43,8 @@ def get_args():
     parser.add_argument('--encoder-type', default='CC', type=str,
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
+                        help='load pretrained encoder')
+    parser.add_argument('--cnn-embed-dim', default=256, type=int, 
                         help='load pretrained encoder')
     parser.add_argument('--encoder-path', default='', type=str,
                         help='path to encoder checkpoint for loading the pretrained weights')
@@ -194,13 +199,23 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
 
     resize_preprocess = ResizeFrame(resize_ratio=0.5)
+    crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
-        TRANSFORM = Compose([resize_preprocess, 
-                             ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
-                               ])
+        TRANSFORM = Compose([
+                             crop_with_background,
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                                     torchvision.transforms.ToTensor(),
+                                     torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ),
+                           ])
     else:
-        TRANSFORM = resize_preprocess
+        TRANSFORM = Compose([
+                            crop_with_background,
+                            ImageTransform(torchvision.transforms.Normalize(MEAN, STD)),
+                            ])
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -213,9 +228,6 @@ def main():
         config=args,
     )
     run_name = wandb.run.name
-    
-    #args.lr = wandb.config.learning_rate
-    #args.wd = wandb.config.weight_decay
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
@@ -235,13 +247,12 @@ def main():
     print('Finish annotation loading', '\n')
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # encoder_res18 = build_encoder_res18(args, hidden_dim=OUTPUT_DIM, activation='sigmoid')
-    encoder_res18 = Res18Classifier(CNN_embed_dim=256, activation="sigmoid").to(device)
+    encoder_res18 = Res18Classifier(CNN_embed_dim=args.cnn_embed_dim, activation="sigmoid").to(device)
     # encoder_res18.turn_off_running_stats()
     print(f'Number of cnnencoder parameters: encoder: {count_parameters(encoder_res18)}') 
-    encoder_res18.eval() 
     # freeze CNN-encoder during training
     encoder_res18.freeze_backbone()
+    encoder_res18.eval()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
     # training settings
@@ -257,13 +268,6 @@ def main():
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
-
-    # for train_el, val_el in zip(train_loader, val_loader):
-    #     train_images, train_seq_len, _, _, _, train_targets = unpack_batch(train_el, device)
-    #     val_images, val_seq_len, _, _, _, val_targets = unpack_batch(val_el, device)
-    #     assert torch.allclose(train_seq_len, val_seq_len), "train and val seq_len should be the same"
-    #     assert torch.allclose(train_images, val_images), "train and val images should be the same"
-    #     assert torch.allclose(train_targets, val_targets), "train and val targets should be the same"
 
     print(f'Start training, cnn-lstm-model, initail lr={args.lr}, weight-decay={args.wd}, training batch size={args.batch_size}')
     if args.output is None:
