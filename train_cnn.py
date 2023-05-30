@@ -66,7 +66,7 @@ def get_args():
 
 def train_epoch(loader, model, criterion, optimizer, device, epoch):
     encoder_CNN = model['encoder']
-    encoder_CNN.train()
+    encoder_CNN.fc.train()
 
     epoch_loss = 0.0
 
@@ -96,6 +96,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = encoder_CNN.threshold
+    best_thr = 0.5
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
@@ -106,7 +107,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
 def val_epoch(loader, model, criterion, device, epoch):
     encoder_CNN = model['encoder']
     # switch to evaluate mode 
-    encoder_CNN.eval()
+    encoder_CNN.fc.eval()
 
     epoch_loss = 0.0
 
@@ -131,6 +132,7 @@ def val_epoch(loader, model, criterion, device, epoch):
     wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     encoder_CNN.threshold = best_thr
+    best_thr = 0.5
     best_f1 = f1_score(tgts, preds > best_thr)
 
     val_score = average_precision_score(tgts, preds)
@@ -143,8 +145,8 @@ def val_epoch(loader, model, criterion, device, epoch):
 def eval_model(loader, model, device):
     # swith to evaluate mode
     encoder_CNN = model['encoder']
-    encoder_CNN.eval()
-
+    encoder_CNN.fc.eval()
+    
     batch_size = loader.batch_size
     n_steps = len(loader)
 
