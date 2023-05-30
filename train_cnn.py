@@ -243,6 +243,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = Res18Classifier(CNN_embed_dim=256, activation="sigmoid").to(device)
     encoder_res18.freeze_backbone()
+    encoder_res18.eval()
+
+    encoder_res18.freeze_backbone()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
     # training settings

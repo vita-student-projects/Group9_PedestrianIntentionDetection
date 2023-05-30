@@ -100,27 +100,25 @@ def eval_model(loader, model, device):
 def main():
     args = get_args()
     # loading data
-    print('Annotation loading-->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
-    print('------------------------------------------------------------------')
-    anns_paths_eval, image_dir_eval = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
-    print(anns_paths_eval)
-    print(image_dir_eval)
-    print('-->>')
-    # eval_data = TransDataset(data_paths=anns_paths_eval, image_set="test", verbose=False)
-    # trans_eval = eval_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None, verbose=True)
-    # non_trans_eval = eval_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
-    # print('-->>')
-    # sequences_eval = extract_pred_sequence(trans=trans_eval, non_trans=non_trans_eval, pred_ahead=args.pred,
-    #                                       balancing_ratio=1.0, neg_in_trans=True,
-    #                                       bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
-    # train_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    eval_intent_sequences = build_pedb_dataset_jaad(anns_paths_eval["JAAD"]["anns"], anns_paths_eval["JAAD"]["split"], image_set = "test", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    eval_intent_sequences_cropped = subsample_and_balance(eval_intent_sequences, balance=False, max_frames=args.max_frames, seed=args.seed)
+    anns_paths_eval, image_dir_eval = define_path(use_jaad=args.jaad, use_pie=False, use_titan=False)
+    eval_intent_sequences = build_pedb_dataset_jaad(
+        anns_paths_eval["JAAD"]["anns"], 
+        anns_paths_eval["JAAD"]["split"], 
+        image_set = "test", 
+        fps=args.fps,
+        prediction_frames=args.pred, 
+        verbose=True)
+    eval_intent_sequences_cropped = subsample_and_balance(
+        eval_intent_sequences,
+        balance=False, 
+        max_frames=args.max_frames, 
+        seed=args.seed)
     print('------------------------------------------------------------------')
     print('Finish annotation loading', '\n')
 
     # load model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     encoder_res18 = build_encoder_res18(args)
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
