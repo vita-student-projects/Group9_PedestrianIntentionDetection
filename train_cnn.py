@@ -98,7 +98,6 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = encoder_CNN.threshold
-    best_thr = 0.5
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
@@ -134,7 +133,6 @@ def val_epoch(loader, model, criterion, device, epoch):
     wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     encoder_CNN.threshold = best_thr
-    best_thr = 0.5
     best_f1 = f1_score(tgts, preds > best_thr)
 
     val_score = average_precision_score(tgts, preds)
@@ -203,14 +201,19 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 
     resize_preprocess = ResizeFrame(resize_ratio=0.5)
     crop_with_background = CropBoxWithBackgroud(size=224)
+    normalization = torchvision.transforms.Normalize([0., 0., 0.], [1., 1., 1.])
     if image_set == 'train':
-        TRANSFORM = Compose([#resize_preprocess, 
+        TRANSFORM = Compose([
                              crop_with_background,
                              ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
-                               ])
+                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)),
+                             normalization,
+                            ])
     else:
-        TRANSFORM = crop_with_background #resize_preprocess
+        TRANSFORM = Compose([
+                            crop_with_background,
+                            normalization
+                            ])
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
