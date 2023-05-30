@@ -7,7 +7,7 @@ from src.dataset.loader import *
 from src.model.basenet import *
 from src.model.baselines import *
 from src.model.models import *
-from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
+from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
@@ -70,7 +70,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     encoder_CNN = model['encoder']
     decoder_RNN = model['decoder']
 
-    encoder_CNN.train()
+    encoder_CNN.fc.train()
     decoder_RNN.train()
     epoch_loss = 0.0
 
@@ -206,13 +206,29 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 
     resize_preprocess = ResizeFrame(resize_ratio=0.5)
 
+    crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
-        TRANSFORM = Compose([resize_preprocess, 
-                             ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
-                               ])
+        TRANSFORM = Compose([
+                             crop_with_background,
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                                     torchvision.transforms.ToTensor(),
+                                     #torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ),
+                           ])
     else:
-        TRANSFORM = resize_preprocess    
+        TRANSFORM = Compose([
+                             crop_with_background,
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ToTensor(), 
+                                     #torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ) 
+                            ])
+
     ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -247,6 +263,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = build_encoder_res18(args)
     print(f'Number of cnnencoder parameters: encoder: {count_parameters(encoder_res18)}')
+    encoder_res18.eval()
     # freeze CNN-encoder during training
     encoder_res18.freeze_backbone()
 
