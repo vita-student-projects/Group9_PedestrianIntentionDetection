@@ -73,6 +73,7 @@ class Res18Classifier(CNNEncoder):
         self.backbone.fc = torch.nn.Identity()
         self.fc = nn.Sequential(
             nn.Linear(512, CNN_embed_dim),
+            nn.Dropout(0.5),
             nn.ReLU(),
             nn.Linear(CNN_embed_dim, 1),
         )
@@ -141,8 +142,6 @@ class Res18RoIEncoder_new(nn.Module):
             for t in range(x_lengths[i]):
                 img = x_5d[i, t, :, :, :]
                 bb=pv[i,t,:]
-                print(bb)
-                print("bb size:",bb.size())
                 x = self.backbone(torch.unsqueeze(img,dim=0),bb)  
                 x = self.fc(x)
                 x = self.activation(x)
