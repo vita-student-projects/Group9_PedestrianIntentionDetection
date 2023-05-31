@@ -8,12 +8,20 @@ The goal of pedestrian intention prediction is to determine, for each prediction
 ### Contribution Overview
 Drawing inspiration from the *Pedestrian Stop and Go Forecasting with Hybrid Feature Fusion* [1], which focuses on state transition prediction, we adapt their model and approach to our specific crossing/non-crossing task. The model including four modules: **visual information** (encode with CNN), **position and relative velocity** (bounding box), **pedestrain behavior**, **scene description**. 
 
-![Model](figure/model.png)
+<p align="center">
+  <img src="figure/model.png" alt="Model">
+</p>
+<p align="center"><em>Pipeline of hybrid model</em></p>
 
 The model employs individual LSTM units for three of modalities and applies a hybrid fusion technique, combining linear projections and concatenations, to integrate the multi-modal embeddings and obtain the final prediction.
 
 ## Experimental Setup
 In order to maintain consistency and improve the system's performance, we made two important decisions. Firstly, we opted to eliminate scene descriptions from the model to mitigate the risk of overfitting on scene attributes, which can adversely affect evaluation results. This adjustment enables the model to concentrate on learning other pertinent information more efficiently. Secondly, we also chose to exclude behavior data from the system. This decision was driven by the challenge of obtaining such data in real-life scenarios, ensuring that our system remains applicable and practical in real-world applications.
+
+<p align="center">
+  <img src="figure/final_model.png" alt="Final model">
+</p>
+<p align="center"><em>Pipeline of our hybrid model</em></p>
 
 Prior to training the hybrid model, we separately trained the CNN encoder with Resnet18 Backbone (image module) and LSTM encoder (pedestrian motion). These models were then utilized as pretrained checkpoints during the training of the hybrid model.
 <p align="center">
@@ -108,9 +116,27 @@ python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --max-frame
 ```
 
 ## Results
-[cnn encoder](https://wandb.ai/arinaruck/dlav-intention-prediction/runs/3qb1j952/workspace?workspace=user-arinaruck)
-[rnn encoder](https://wandb.ai/arinaruck/dlav-intention-prediction/runs/3qb1j952?workspace=user-arinaruck) (pedestrian motion).
+
+
+|  | Test/f1 |
+| -------------- | -------------- |
+| Hybrid model | 0.8035 |
+| CNN encoder | 0.7808 |
+| RNN encoder | 0.812 |
+
+The detailed plots(loss, f1, prediction distribution ....) could be found in the following link:
+[hybrid model]( https://wandb.ai/arinaruck/dlav-intention-prediction/runs/h8g4l4cn/overview?workspace=user-arinaruck)
+[cnn encoder](https://wandb.ai/arinaruck/dlav-intention-prediction/runs/5pom7rto?workspace=user-arinaruck)
+[rnn encoder](https://wandb.ai/arinaruck/dlav-intention-prediction/runs/3qb1j952?workspace=user-arinaruck)
+
+### Visualization
+**Green**: crossing **Red**: non-crossing
+**Target**: word **Prediction**: bounding box
+![Alt Text](figure\demo_video_0071.gif)
+
 ## Conclusion
+
+
 
 ## Reference
 [1] Dongxu Guo, Taylor Mordan, and Alexandre Alahi. *Pedestrian Stop and Go Forecasting with Hybrid Feature Fusion*. 2022. [arXiv: 2203.02489 [cs.CV]](https://arxiv.org/abs/2203.02489) .
