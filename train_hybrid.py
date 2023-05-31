@@ -159,7 +159,8 @@ def prepare_data(anns_paths, image_dir, args, image_set, load_image=True):
         anns_paths["JAAD"]["split"], 
         image_set=image_set, 
         fps=args.fps, 
-        prediction_frames=args.pred, 
+        prediction_frames=args.pred,
+        max_frames=args.max_frames, 
         verbose=True)
     if not image_set == "test":
         intent_sequences = balance(intent_sequences, seed=args.seed)
