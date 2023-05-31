@@ -49,6 +49,7 @@ class EarlyStopping:
             'epoch': epoch,
             'optimizer_state_dict': optimizer.state_dict(),
             'score': score,
+            'best_thr': model['best_thr'],
         }
         if 'encoder' in model:
             cp_dict['encoder_state_dict'] = model['encoder'].state_dict()
@@ -65,3 +66,4 @@ def load_from_checkpoint(model, save_path):
         model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
     if 'decoder' in model:
         model['decoder'].load_state_dict(checkpoint['decoder_state_dict'])
+    model['best_thr'] = checkpoint['best_thr']
