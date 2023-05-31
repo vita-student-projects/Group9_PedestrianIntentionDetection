@@ -50,6 +50,7 @@ def get_args():
     parser.add_argument('-nw', '--num-workers', type=int, default=4, 
                         help='number of workers for data loading')
     parser.add_argument("--mode", type=str)
+    parser.add_argument("--backbone", type=str, default="resnet18")
     args = parser.parse_args()
 
     return args

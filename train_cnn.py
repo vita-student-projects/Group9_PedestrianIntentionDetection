@@ -58,10 +58,7 @@ def get_args():
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
     parser.add_argument('--early-stopping-patience', default=3, type=int,)
-    parser.add_argument('--mobilenetsmall', default=False, action='store_true',
-                        help='use mobilenet small or not')
-    parser.add_argument('--mobilenetbig', default=False, action='store_true',
-                        help='use mobilenet big or not')
+    parser.add_argument("--backbone", type=str, default="resnet18")
     parser.add_argument('-nw', '--num-workers', default=4, type=int, help='number of workers for data loading')
     args = parser.parse_args()
 
