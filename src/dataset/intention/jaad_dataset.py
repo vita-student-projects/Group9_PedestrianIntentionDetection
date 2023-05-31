@@ -163,7 +163,7 @@ def build_pedb_dataset_jaad(jaad_anns_path,
                 pedb_dataset[idx]['video_number'] = vid
                 for attribute in ['frames', 'bbox', 'action', 'occlusion', 'cross', 'behavior', 'traffic_light']:
                     pedb_dataset[idx][attribute] = pedb_info[idx][attribute][::fps_step]
-                pedb_dataset[idx]['attributes'] = pedb_info[idx]['attributes']  
+                pedb_dataset[idx]['attributes'] = pedb_info[idx]['attributes']
     intention_seqs = add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, max_frames=max_frames, verbose=verbose, transition_only=transition_only)
     return intention_seqs
 
@@ -209,7 +209,7 @@ class JaadIntentionDataset:
 
 def unpack_batch(batch, device):
     targets = batch['label'].to(device, non_blocking=True)
-    images = batch['image'].to(device, non_blocking=True) 
+    images = batch['image'].to(device, non_blocking=True)
     bboxes_ped = batch['bbox_ped']
     seq_len = batch['seq_length']
     behavior = batch['behavior'].to(device, non_blocking=True)
