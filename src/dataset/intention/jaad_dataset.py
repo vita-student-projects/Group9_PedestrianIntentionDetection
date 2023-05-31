@@ -72,17 +72,8 @@ def get_pedb_info_jaad(annotations, vid):
                 # traffic light: {'n/a': 0, 'red': 1, 'green': 2}
                 pedb_info[idx]['traffic_light'].append(dataset[vid]['traffic_annotations'][frames[i]]['traffic_light'])
 
-        # attribute vector
         # scene description
         atr_vec = [0, 0, 0, 0, 0]
-        #atr_vec[0] = dataset[vid]['ped_annotations'][idx]['attributes']['num_lanes']
-        #atr_vec[1] = dataset[vid]['ped_annotations'][idx]['attributes']['intersection']
-        #atr_vec[2] = dataset[vid]['ped_annotations'][idx]['attributes']['designated']
-        # TODO: why always 1? 'signalized': {'n/a': 0, 'NS': 1, 'S': 2},
-        #if dataset[vid]['ped_annotations'][idx]['attributes']['signalized'] > 0:
-        #atr_vec[3] = dataset[vid]['ped_annotations'][idx]['attributes']['signalized'] 
-        # 'traffic_direction': {'OW': 0, 'TW': 1},
-        #atr_vec[4] = dataset[vid]['ped_annotations'][idx]['attributes']['traffic_direction']
         pedb_info[idx]['attributes'] = copy.deepcopy(atr_vec)
     return pedb_info
 
