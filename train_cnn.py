@@ -9,7 +9,7 @@ from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropB
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.model.models import Res18Classifier
-from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
 from torch.utils.data import DataLoader
@@ -58,10 +58,7 @@ def get_args():
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
     parser.add_argument('--early-stopping-patience', default=3, type=int,)
-    parser.add_argument('--mobilenetsmall', default=False, action='store_true',
-                        help='use mobilenet small or not')
-    parser.add_argument('--mobilenetbig', default=False, action='store_true',
-                        help='use mobilenet big or not')
+    parser.add_argument("--backbone", type=str, default="resnet18")
     parser.add_argument('-nw', '--num-workers', default=4, type=int, help='number of workers for data loading')
     args = parser.parse_args()
 
@@ -99,7 +96,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     epoch_loss /= n_steps
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
-    best_thr = encoder_CNN.threshold
+    best_thr = model['best_thr']
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
@@ -133,7 +130,7 @@ def val_epoch(loader, model, criterion, device, epoch):
 
     wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
-    encoder_CNN.threshold = best_thr
+    model['best_thr'] = best_thr
 
     val_score = average_precision_score(tgts, preds)
     log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
@@ -161,7 +158,7 @@ def eval_model(loader, model, device):
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
     train_score = average_precision_score(tgts, preds)
-    best_thr = encoder_CNN.threshold
+    best_thr = model['best_thr']
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'test', 0)
     preds = preds > best_thr
@@ -193,8 +190,8 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
 
 def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set=image_set, fps=args.fps, prediction_frames=args.pred, verbose=True)
-    balance = False if image_set == "test" else True
-    intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
+    if not image_set == "test":
+        intent_sequences = balance(intent_sequences, seed=args.seed)
 
     crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
@@ -218,7 +215,7 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                                  ]),
                              ) 
                             ])
-    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
+    ds = IntentionSequenceDataset(intent_sequences, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
 
@@ -230,9 +227,6 @@ def main():
         config=args,
     )
     run_name = wandb.run.name
-    
-    #args.lr = wandb.config.learning_rate
-    #args.wd = wandb.config.weight_decay
 
     # define our custom x axis metric
     for setup in ['train', 'val']:
@@ -256,7 +250,7 @@ def main():
     encoder_res18.freeze_backbone()
     encoder_res18.eval()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
-    model = {'encoder': encoder_res18}
+    model = {'encoder': encoder_res18, 'best_thr': 0.5}
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     cnn_params = list(encoder_res18.fc.parameters())

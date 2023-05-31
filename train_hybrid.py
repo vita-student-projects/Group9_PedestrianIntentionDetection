@@ -9,13 +9,15 @@ from src.model.baselines import *
 from src.model.models import *
 from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 from src.utils import count_parameters, find_best_threshold, seed_torch
-from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
 from torch.utils.data import DataLoader
 import wandb
 from src.early_stopping import EarlyStopping, load_from_checkpoint
 
+MEAN = [0.3104, 0.2813, 0.2973]
+STD = [0.1761, 0.1722, 0.1673]
 
 def get_args():
     parser = argparse.ArgumentParser(description='Train hybrid model')
@@ -56,10 +58,7 @@ def get_args():
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
     parser.add_argument('--early-stopping-patience', default=3, type=int,)
-    parser.add_argument('--mobilenetsmall', default=False, action='store_true',
-                        help='use mobilenet small or not')
-    parser.add_argument('--mobilenetbig', default=False, action='store_true',
-                        help='use mobilenet big or not')
+    parser.add_argument("--backbone", type=str, default="resnet18")
     parser.add_argument('-nw', '--num-workers', default=4, type=int, help='number of workers for data loading')
     args = parser.parse_args()
 
@@ -99,7 +98,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     epoch_loss /= n_steps
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
-    best_thr = decoder_RNN.threshold
+    best_thr = model['best_thr']
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
@@ -137,7 +136,7 @@ def val_epoch(loader, model, criterion, device, epoch):
     epoch_loss /= n_steps
     wandb.log({'val/loss': epoch_loss, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
-    decoder_RNN.threshold = best_thr
+    model['best_thr'] = best_thr
 
     val_score = average_precision_score(tgts, preds)
     log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
@@ -169,7 +168,7 @@ def eval_model(loader, model, device):
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
     train_score = average_precision_score(tgts, preds)
-    best_thr = decoder_RNN.threshold
+    best_thr = model['best_thr']
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'test', 0)
     preds = preds > best_thr
@@ -200,9 +199,16 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
 
 
 def prepare_data(anns_paths, image_dir, args, image_set):
-    intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set=image_set, fps=args.fps, prediction_frames=args.pred, verbose=True)
-    balance = False if image_set == "test" else True
-    intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
+    intent_sequences = build_pedb_dataset_jaad(
+        anns_paths["JAAD"]["anns"], 
+        anns_paths["JAAD"]["split"], 
+        image_set=image_set, 
+        fps=args.fps, 
+        prediction_frames=args.pred, 
+        verbose=True
+    )
+    if not image_set == "test":
+        intent_sequences = balance(intent_sequences, seed=args.seed)
 
     crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
@@ -212,7 +218,7 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                                  torchvision.transforms.Compose([
                                      torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
                                      torchvision.transforms.ToTensor(),
-                                     #torchvision.transforms.Normalize(MEAN, STD),
+                                     torchvision.transforms.Normalize(MEAN, STD),
                                  ]),
                              ),
                            ])
@@ -222,12 +228,12 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                              ImageTransform(
                                  torchvision.transforms.Compose([
                                      torchvision.transforms.ToTensor(), 
-                                     #torchvision.transforms.Normalize(MEAN, STD),
+                                     torchvision.transforms.Normalize(MEAN, STD),
                                  ]),
                              ) 
                             ])
 
-    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
+    ds = IntentionSequenceDataset(intent_sequences, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
 
@@ -268,7 +274,7 @@ def main():
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
     print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder train: {count_parameters(encoder_res18)}')
-    model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
+    model = {'encoder': encoder_res18, 'decoder': decoder_lstm, 'best_thr': 0.5}
     wandb.watch((encoder_res18, decoder_lstm), log_freq=10)
     # training settings
     criterion = torch.nn.BCELoss().to(device)

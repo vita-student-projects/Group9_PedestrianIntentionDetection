@@ -222,8 +222,9 @@ def prep_pred_storage(loader):
 
 
 def print_eval_metrics(tgts, preds, best_thr):
-    train_score = average_precision_score(tgts, preds)
+    ap = average_precision_score(tgts, preds)
     f1 = f1_score(tgts, preds > best_thr)
     preds = preds > best_thr
-    print(f"Best threshold: {best_thr:.3f}, F1: {f1:.3f}, AP: {train_score:.3f}")
+    print(f"Best threshold: {best_thr:.3f}, F1: {f1:.3f}, AP: {ap:.3f}", flush=True)
     print(classification_report(tgts, preds))
+    return f1, ap
