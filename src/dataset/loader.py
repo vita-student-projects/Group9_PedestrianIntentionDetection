@@ -30,31 +30,31 @@ def define_path(use_jaad=True, use_pie=True, use_titan=True):
     # anns:/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl
     # split:DATA/annotations/JAAD/splits/
     # image JAAD:/work/scitas-share/datasets/Vita/civil-459/JAAD/images
-    all_anns_paths = {'JAAD': {'anns': '/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl',
-                               'split': 'DATA/annotations/JAAD/splits/'},
-                      'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
-                      'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
-                                'split': '/work/vita/datasets/TITAN/splits/'}
-                      }
-    # change from JAAD images: '/work/vita/datasets/JAAD/images/' to 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images'
-    all_image_dir = {'JAAD': '/work/scitas-share/datasets/Vita/civil-459/JAAD/images',
-                     'PIE': '/work/vita/datasets/PIE/images/',
-                     'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
-                     }
-    # Uncomment it when running on Jessica's computer
-    # change from JAAD anns: 'TransNet/DATA/JAAD_DATA.pkl' to 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
-    # change from JAAD split: '/work/vita/datasets/JAAD/split_ids/' to 'DATA/annotations/JAAD/splits'
-    # all_anns_paths = {'JAAD': {'anns': 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl',
-    #                            'split': 'DATA/annotations/JAAD/splits'},
+    # all_anns_paths = {'JAAD': {'anns': '/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl',
+    #                            'split': 'DATA/annotations/JAAD/splits/'},
     #                   'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
     #                   'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
     #                             'split': '/work/vita/datasets/TITAN/splits/'}
     #                   }
     # # change from JAAD images: '/work/vita/datasets/JAAD/images/' to 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images'
-    # all_image_dir = {'JAAD': 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images',
+    # all_image_dir = {'JAAD': '/work/scitas-share/datasets/Vita/civil-459/JAAD/images',
     #                  'PIE': '/work/vita/datasets/PIE/images/',
     #                  'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
     #                  }
+    # Uncomment it when running on Jessica's computer
+    # change from JAAD anns: 'TransNet/DATA/JAAD_DATA.pkl' to 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
+    # change from JAAD split: '/work/vita/datasets/JAAD/split_ids/' to 'DATA/annotations/JAAD/splits'
+    all_anns_paths = {'JAAD': {'anns': 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl',
+                               'split': 'DATA/annotations/JAAD/splits'},
+                      'PIE': {'anns': 'TransNet/DATA/PIE_DATA.pkl'},
+                      'TITAN': {'anns': '/work/vita/datasets/TITAN/titan_0_4/',
+                                'split': '/work/vita/datasets/TITAN/splits/'}
+                      }
+    # change from JAAD images: '/work/vita/datasets/JAAD/images/' to 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images'
+    all_image_dir = {'JAAD': 'D:\VisualStudioProgram\JAAD-JAAD_2.0\JAAD-JAAD_2.0\images',
+                     'PIE': '/work/vita/datasets/PIE/images/',
+                     'TITAN': '/work/vita/datasets/TITAN/images_anonymized/'
+                     }
 
     # Uncomment it when running on Arina's computer
     # change from JAAD anns: 'TransNet/DATA/JAAD_DATA.pkl' to 'DATA/annotations/JAAD/anns/JAAD_DATA.pkl'
@@ -515,6 +515,8 @@ class IntentionSequenceDataset(torch.utils.data.Dataset):
                     img, anns = self.preprocess(img, anns)
                 img_tensors.append(img)
             bbox_ped_new.append(copy.deepcopy(anns['bbox']))
+        
+        img_tensors = torch.stack(img_tensors) if self.load_image else torch.tensor([])
     
         img_tensors = torch.stack(img_tensors) if self.load_image else torch.tensor([])
         seq_len = len(frames)

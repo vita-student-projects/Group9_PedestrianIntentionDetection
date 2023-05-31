@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch
 import numpy as np
 from src.dataset.loader import IntentionSequenceDataset, define_path
-from src.transform.preprocess import ImageTransform, Compose, ResizeFrame
+from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
 from src.model.models import Res18Classifier
@@ -40,6 +40,8 @@ def get_args():
     parser.add_argument('--encoder-type', default='CC', type=str,
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
+                        help='load pretrained encoder')
+    parser.add_argument('--cnn-embed-dim', default=256, type=int, 
                         help='load pretrained encoder')
     parser.add_argument('--encoder-path', default='', type=str,
                         help='path to encoder checkpoint for loading the pretrained weights')
@@ -96,12 +98,10 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
     best_thr = encoder_CNN.threshold
-    best_thr = 0.5
     f1 = f1_score(tgts, preds > best_thr)
     log_metrics(tgts, preds, best_thr, f1, train_score, 'train', epoch + 1)
 
-    return epoch_loss
-
+    return epoch_loss 
 
 @torch.no_grad()
 def val_epoch(loader, model, criterion, device, epoch):
@@ -132,8 +132,6 @@ def val_epoch(loader, model, criterion, device, epoch):
     wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     encoder_CNN.threshold = best_thr
-    best_thr = 0.5
-    best_f1 = f1_score(tgts, preds > best_thr)
 
     val_score = average_precision_score(tgts, preds)
     log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
@@ -156,9 +154,6 @@ def eval_model(loader, model, device):
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
-        if step == 0:
-            print(targets)
-            print(outputs_CNN)
         
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
@@ -199,15 +194,26 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     balance = False if image_set == "test" else True
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
 
-    resize_preprocess = ResizeFrame(resize_ratio=0.5)
+    crop_with_background = CropBoxWithBackgroud(size=224)
+    normalization = torchvision.transforms.Normalize([0., 0., 0.], [1., 1., 1.])
     if image_set == 'train':
-        TRANSFORM = Compose([resize_preprocess, 
+        TRANSFORM = Compose([
+                             crop_with_background,
                              ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1))
-                               ])
+                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)),
+                             normalization,
+                            ])
     else:
-        TRANSFORM = resize_preprocess
-    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM)
+        TRANSFORM = Compose([
+                             crop_with_background,
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ToTensor(), 
+                                     torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ) 
+                            ])
+    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
 
@@ -241,11 +247,9 @@ def main():
     print('Finish annotation loading', '\n')
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    encoder_res18 = Res18Classifier(CNN_embed_dim=256, activation="sigmoid").to(device)
+    encoder_res18 = Res18Classifier(CNN_embed_dim=args.cnn_embed_dim, activation="sigmoid").to(device)
     encoder_res18.freeze_backbone()
     encoder_res18.eval()
-
-    encoder_res18.freeze_backbone()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
     model = {'encoder': encoder_res18}
     # training settings
@@ -261,7 +265,7 @@ def main():
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
-
+    
     print(f'Start training, cnn-lstm-model, initail lr={args.lr}, weight-decay={args.wd}, training batch size={args.batch_size}')
     if args.output is None:
         cp_dir = Path(f'./checkpoints/{run_name}')
