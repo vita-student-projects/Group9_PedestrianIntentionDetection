@@ -7,11 +7,11 @@ from src.dataset.loader import IntentionSequenceDataset
 from src.utils import count_parameters, find_best_threshold, seed_torch, setup_wandb, log_metrics, prepare_cp_path, log_to_stdout
 from src.model.models import RNNClassifier
 from src.dataset.utils import build_dataloaders
-from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score
 import wandb
 from src.early_stopping import EarlyStopping, load_from_checkpoint
-from src.utils import log_metrics
+from src.utils import log_metrics, prep_pred_storage, print_eval_metrics
 
 OUTPUT_DIM = 1
 INPUT_DIM = 8
@@ -61,12 +61,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     decoder_RNN.train()
 
     epoch_loss = 0.0
-
-    n_steps = len(loader)
-    batch_size = loader.batch_size
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, n_steps, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         _, seq_len, pos_vel, _, _, targets = unpack_batch(inputs, device)
@@ -101,12 +96,7 @@ def val_epoch(loader, model, criterion, device, epoch):
     decoder_RNN.eval()
 
     epoch_loss = 0.0
-
-    n_steps = len(loader)
-    batch_size = loader.batch_size
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, n_steps, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         _, seq_len, pos_vel, _, _, targets = unpack_batch(inputs, device)
@@ -138,11 +128,7 @@ def eval_model(loader, model, device):
     decoder_RNN = model['decoder']
     decoder_RNN.eval()
     
-    batch_size = loader.batch_size
-    n_steps = len(loader)
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, _, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         _, seq_len, pos_vel, _, _, targets = unpack_batch(inputs, device)
@@ -150,12 +136,9 @@ def eval_model(loader, model, device):
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
-    train_score = average_precision_score(tgts, preds)
     best_thr = model['best_thr']
-    f1 = f1_score(tgts, preds > best_thr)
-    log_metrics(tgts, preds, best_thr, f1, train_score, 'test', 0)
-    preds = preds > best_thr
-    print(classification_report(tgts, preds))
+    f1, ap = print_eval_metrics(tgts, preds, best_thr)
+    log_metrics(tgts, preds, best_thr, f1, ap, 'test', 0)
 
 
 def prepare_data(anns_paths, image_dir, args, image_set, load_image=True):
@@ -166,9 +149,9 @@ def prepare_data(anns_paths, image_dir, args, image_set, load_image=True):
         fps=args.fps, 
         prediction_frames=args.pred, 
         verbose=True)
-    balance = False if image_set == "test" else True
-    intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
-    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, load_image=load_image)
+    if not image_set == "test":
+        intent_sequences = balance(intent_sequences, seed=args.seed)
+    ds = IntentionSequenceDataset(intent_sequences, image_dir=image_dir, load_image=load_image)
     return ds
 
 
@@ -184,7 +167,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     rnn_classifier = RNNClassifier(input_size=INPUT_DIM, rnn_embeding_size=256, classification_head_size=128).to(device)
-    model = {'decoder': rnn_classifier}
+    model = {'decoder': rnn_classifier, 'best_thr': 0.5}
     print(f'Number of trainable parameters: encoder: {count_parameters(rnn_classifier)}')
 
     # training settings

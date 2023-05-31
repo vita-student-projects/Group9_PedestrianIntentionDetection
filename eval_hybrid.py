@@ -1,7 +1,7 @@
 import argparse
 import torch
 from tqdm import tqdm
-from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad_new, unpack_batch
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, unpack_batch
 from src.early_stopping import load_from_checkpoint
 from src.model.models import Res18Classifier, RNNClassifier
 from src.dataset.loader import define_path, IntentionSequenceDataset
@@ -36,15 +36,17 @@ def get_args():
                         help='set random seed for sampling')
     parser.add_argument('-cp', '--checkpoint-path', type=str,
                         help='path to the checkpoint for loading pretrained weights')
+    parser.add_argument('-nw', '--num-workers', type=int, default=4
+                        help='number of workers for data loading')
     parser.add_argument("--mode", type=str)
     args = parser.parse_args()
 
     return args
 
 
-def build_loader(args, intent_seqs, TRANSFORM, image_dir):
-    ds = IntentionSequenceDataset(intent_seqs, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM)
-    loader = torch.utils.data.DataLoader(ds, batch_size=1, num_workers=4 ,shuffle=False)
+def build_loader(args, intent_seqs, TRANSFORM, image_dir, load_image=True):
+    ds = IntentionSequenceDataset(intent_seqs, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM, load_image=load_image)
+    loader = torch.utils.data.DataLoader(ds, batch_size=1, num_workers=args.nw, shuffle=False)
     return loader
 
     
@@ -88,7 +90,7 @@ def main():
     # loading data
     anns_paths_eval, image_dir_eval = define_path(use_jaad=args.jaad, use_pie=False, use_titan=False)
 
-    normal_intent_sequences = build_pedb_dataset_jaad_new(
+    normal_intent_sequences = build_pedb_dataset_jaad(
         anns_paths_eval["JAAD"]["anns"], 
         anns_paths_eval["JAAD"]["split"], 
         image_set = "test", 
@@ -97,7 +99,7 @@ def main():
         max_frames=args.max_frames,
         verbose=True)
 
-    hard_intent_sequences = build_pedb_dataset_jaad_new(
+    hard_intent_sequences = build_pedb_dataset_jaad(
         anns_paths_eval["JAAD"]["anns"], 
         anns_paths_eval["JAAD"]["split"], 
         image_set = "test", 

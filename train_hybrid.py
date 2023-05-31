@@ -9,7 +9,7 @@ from src.model.baselines import *
 from src.model.models import *
 from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 from src.utils import count_parameters, find_best_threshold, seed_torch
-from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
 from torch.utils.data import DataLoader
@@ -200,9 +200,16 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
 
 
 def prepare_data(anns_paths, image_dir, args, image_set):
-    intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set=image_set, fps=args.fps, prediction_frames=args.pred, verbose=True)
-    balance = False if image_set == "test" else True
-    intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=args.max_frames, seed=args.seed, balance=balance)
+    intent_sequences = build_pedb_dataset_jaad(
+        anns_paths["JAAD"]["anns"], 
+        anns_paths["JAAD"]["split"], 
+        image_set=image_set, 
+        fps=args.fps, 
+        prediction_frames=args.pred, 
+        verbose=True
+    )
+    if not image_set == "test":
+        intent_sequences = balance(intent_sequences, seed=args.seed)
 
     crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
@@ -227,7 +234,7 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                              ) 
                             ])
 
-    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
+    ds = IntentionSequenceDataset(intent_sequences, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
 
@@ -268,7 +275,7 @@ def main():
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
     print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder train: {count_parameters(encoder_res18)}')
-    model = {'encoder': encoder_res18, 'decoder': decoder_lstm}
+    model = {'encoder': encoder_res18, 'decoder': decoder_lstm, 'best_thr': 0.5}
     wandb.watch((encoder_res18, decoder_lstm), log_freq=10)
     # training settings
     criterion = torch.nn.BCELoss().to(device)

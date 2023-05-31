@@ -84,48 +84,10 @@ def get_pedb_info_jaad(annotations, vid):
         # 'traffic_direction': {'OW': 0, 'TW': 1},
         #atr_vec[4] = dataset[vid]['ped_annotations'][idx]['attributes']['traffic_direction']
         pedb_info[idx]['attributes'] = copy.deepcopy(atr_vec)
-
     return pedb_info
 
 
-def add_cross_label_jaad(dataset, prediction_frames, verbose=False, transition_only=False) -> None:
-    """
-    Add cross & non-cross(c/nc) labels depends on prediction frame for every frame
-    """
-    all_cross = 0
-    total_samples = 0
-    length_filtered, transition_filtered = 0, 0
-    pids = list(dataset.keys())
-    for idx in pids:
-        frames = dataset[idx]['frames']
-        dataset[idx]['labels'] = []
-        dataset[idx]['curr_labels'] = []
-        if len(frames) <= prediction_frames:
-            length_filtered += 1
-            continue
-        for j in range(len(frames) - prediction_frames):
-            if transition_only:
-                if dataset[idx]['cross'][j] == dataset[idx]['cross'][j + prediction_frames]:
-                    transition_filtered += 1
-                    continue
-            dataset[idx]['labels'].append(dataset[idx]['cross'][j + prediction_frames])
-            all_cross += dataset[idx]['cross'][j + prediction_frames]
-            total_samples += 1
-        # cut last prediction_frames frames
-        for attribute in ['frames', 'bbox', 'action', 'occlusion', 'behavior', 'traffic_light']:
-            if prediction_frames > 0:
-                dataset[idx][attribute] = dataset[idx][attribute][:-prediction_frames]
-        dataset[idx].pop('cross')
-
-    if verbose:
-        print('----------------------------------------------------------------')
-        print("JAAD:")
-        print(f'Total number of crosses: {all_cross}')
-        print(f'Total number of non-crosses: {total_samples - all_cross}')
-        print(f'Filtered samples: {length_filtered + transition_filtered}, out of them: {length_filtered} due to length, {transition_filtered} due to lack of transition')
-
-
-def add_cross_label_jaad_new(dataset, prediction_frames, max_frames, verbose=False, transition_only=False, seed=99) -> None:
+def add_cross_label_jaad(dataset, prediction_frames, max_frames, verbose=False, transition_only=False, seed=99) -> None:
     """
     Add cross & non-cross(c/nc) labels depends on prediction frame for every frame
     """
@@ -172,40 +134,13 @@ def add_cross_label_jaad_new(dataset, prediction_frames, max_frames, verbose=Fal
         print(f'Total number of crosses: {all_cross}')
         print(f'Total number of non-crosses: {total_samples - all_cross}')
         print(f'Filtered samples: {length_filtered + transition_filtered}, out of them: {length_filtered} due to length, {transition_filtered} due to lack of transition')
+    
     random.seed(seed)
-
     random.shuffle(new_samples)
     return new_samples
 
 
 def build_pedb_dataset_jaad(jaad_anns_path, 
-                            split_vids_path, image_set="all", 
-                            subset='default', fps=JAAD_BASE_FPS,  
-                            prediction_frames=PREDICTION_FRAMES, 
-                            verbose=False, 
-                            transition_only=False) -> dict:
-    """
-    Build pedestrian dataset from jaad annotations
-    """
-    jaad_anns = pickle.load(open(jaad_anns_path, 'rb'))
-    pedb_dataset = {}
-    vids = get_split_vids(split_vids_path, image_set, subset)
-    fps_step = JAAD_BASE_FPS // fps
-    for vid in vids:
-        pedb_info = get_pedb_info_jaad(jaad_anns, vid)
-        pids = list(pedb_info.keys())
-        for idx in pids:
-            if len(pedb_info[idx]['action']) > 0:
-                pedb_dataset[idx] = {}
-                pedb_dataset[idx]['video_number'] = vid
-                for attribute in ['frames', 'bbox', 'action', 'occlusion', 'cross', 'behavior', 'traffic_light']:
-                    pedb_dataset[idx][attribute] = pedb_info[idx][attribute][::fps_step]
-                pedb_dataset[idx]['attributes'] = pedb_info[idx]['attributes']
-    add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, verbose=verbose, transition_only=transition_only)
-    return pedb_dataset    
-
-
-def build_pedb_dataset_jaad_new(jaad_anns_path, 
                             split_vids_path, image_set="all", 
                             subset='default', fps=JAAD_BASE_FPS,  
                             prediction_frames=PREDICTION_FRAMES, 
@@ -229,54 +164,14 @@ def build_pedb_dataset_jaad_new(jaad_anns_path,
                 for attribute in ['frames', 'bbox', 'action', 'occlusion', 'cross', 'behavior', 'traffic_light']:
                     pedb_dataset[idx][attribute] = pedb_info[idx][attribute][::fps_step]
                 pedb_dataset[idx]['attributes'] = pedb_info[idx]['attributes']
-    intention_seqs = add_cross_label_jaad_new(pedb_dataset, prediction_frames=prediction_frames, max_frames=max_frames, verbose=verbose, transition_only=transition_only)
+    intention_seqs = add_cross_label_jaad(pedb_dataset, prediction_frames=prediction_frames, max_frames=max_frames, verbose=verbose, transition_only=transition_only)
     return intention_seqs
 
 
-def subsample_and_balance(intention_dataset, balance, max_frames=MAX_FRAMES, seed=SEED):
-    random.seed(seed)
-    new_samples = []
-    all_labels = []
-    for ped_id in intention_dataset:
-        n_frames = len(intention_dataset[ped_id]['frames'])
-        # add this to remove the sample which has no label (len(frames) <= prediction_frames in function add_cross_label_jaad)
-        if len(intention_dataset[ped_id]['labels']) == 0:
-            continue
-        for i in range(max_frames, n_frames):
-            new_sample = {}
-            new_id = f"{ped_id}_{intention_dataset[ped_id]['video_number']}_{i}"
-            new_sample['sample_id'] = new_id
-            for attribute in ['frames', 'bbox', 'action', 'occlusion', 'behavior', 'traffic_light']:
-                new_sample[attribute] = intention_dataset[ped_id][attribute][i - max_frames:i]
-            new_sample['label'] = intention_dataset[ped_id]['labels'][i - 1]
-            for static_attribute in ['video_number', 'attributes']:
-                new_sample[static_attribute] = intention_dataset[ped_id][static_attribute]
-            new_sample['ped_id'] = ped_id
-            new_samples.append(new_sample)
-            all_labels.append(new_sample['label'])
-    #balancing
-    if balance:
-        labels_stats = Counter(all_labels)
-        print(f"Labels stats: {labels_stats}")
-        max_common = min(labels_stats[0], labels_stats[1])
-        crossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 1]
-        noncrossing_ids = [i for i, sample in enumerate(new_samples) if sample['label'] == 0]
-        kept_crossing_ids = random.sample(crossing_ids, max_common)
-        kept_noncrossing_ids = random.sample(noncrossing_ids, max_common)
-        kept_ids = kept_crossing_ids + kept_noncrossing_ids
-        balanced_new_samples = [new_samples[i] for i in kept_ids]
-    else:
-        balanced_new_samples = new_samples
-    random.shuffle(balanced_new_samples)
-    print(f"Total number of samples before and after balancing: {len(new_samples)}, {len(balanced_new_samples)}")
-    return balanced_new_samples
-
-
-def balance_new(intention_dataset, seed=SEED):
+def balance(intention_dataset, seed=SEED):
     random.seed(seed)
     all_labels = [el['label'] for el in intention_dataset]
     labels_stats = Counter(all_labels)
-    print(f"Labels stats: {labels_stats}")
     max_common = min(labels_stats[0], labels_stats[1])
     crossing_ids = [i for i, sample in enumerate(intention_dataset) if sample['label'] == 1]
     noncrossing_ids = [i for i, sample in enumerate(intention_dataset) if sample['label'] == 0]
