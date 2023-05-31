@@ -22,9 +22,9 @@ The label assigned to a given sequence of past observations corresponds to the c
 ### Input
 - **visual context**: (channel x image height x image width)
 a sequence of RGB images cropped with corresponding pedestrian bounding box and backbround information. 
-- **bounding boxes and relative velocities**: (x<sub>t</sub>, y<sub>t</sub>, H<sub>t</sub>, W<sub>t</sub>, $\Delta x$<sub>t</sub>, $\Delta y$<sub>t</sub>, $\Delta H$<sub>t</sub>, $\Delta W$<sub>t</sub>)
-P<sub>t</sub> = (x<sub>t</sub>, y<sub>t</sub>, H<sub>t</sub>, W<sub>t</sub>) -> bounding box of corresponding pedestrian
-V<sub>t</sub> = ($\Delta$x<sub>t</sub>, $\Delta$y<sub>t</sub>, $\Delta$H<sub>t</sub>, $\Delta$W<sub>t</sub>) = (x<sub>t</sub> - x<sub>t-1</sub>, y<sub>t</sub> - y<sub>t-1</sub>, H<sub>t</sub> - H<sub>t-1</sub>, W<sub>t</sub> - W<sub>t-1</sub>) -> relative velocity of the pedestrian
+- **bounding boxes and relative velocities**: $(x_t, y_t, H_t, W_t, \Delta x_t, \Delta y_t, \Delta H_t, \Delta W_t)$
+$P_t = (x_t, y_t, H_t, W_t)$ -> bounding box of corresponding pedestrian
+$V_t = (\Delta x_t, \Delta y_t, \Delta H_t, \Delta W_t) = (x_t - x_{t-1}, y_t - y_{t-1}, H_t - H_{t-1}, W_t - W_{t-1})$ -> relative velocity of the pedestrian
 - **behavioural data**: (b<sup>t</sup><sub>look</sub>, b<sup>t</sup><sub>nod</sub>, b<sup>t</sup><sub>hand</sub>)
 b<sup>t</sup><sub>look</sub> -> {0: 'not-looking', 1: 'looking'}
 b<sup>t</sup><sub>nod</sub> -> {0: 'undefined', 1: 'nodding'}
