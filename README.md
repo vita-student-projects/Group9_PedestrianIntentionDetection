@@ -84,22 +84,22 @@ pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 torchaudio==0.10.1 -f 
 This project has been tested with Python 3.7.7, PyTorch 1.10.1, CUDA 11.1.
 
 ## Train
-Hybrid Parameters:
+**Hyperparameter:**
 
 max-frames: observation frame length (if not specified, default fps=5, so max-frames=5 means 1 seconds)
 
 pred: prediction frame length
 
-Traning hybrid model:
+**Training hybrid model:**
 ```
 train_crnn.py --cnn-encoder-path checkpoints/upbeat-wood-247/CNN_Encoder.pt --rnn-decoder-path checkpoints/vague-darkness-248/LSTM_pos_vel.pt --pred 5 --max-frame 5 -lr 5e-6 -wd 1e-2 --early-stopping-patience 5
 ```
-Training cnn encoder:
+**Training cnn encoder:**
 ```
 train_cnn.py --epochs 50 --early-stopping-patience 5 -wd 1e-3 --pred 5 -lr 1e-5
 ```
 
-Training rnn encoder:
+**Training rnn encoder:**
 ```
 train_rnn.py --epochs 50 --early-stopping-patience 5 -lr 1e-4 -wd 1e-4 --pred 5 --max-frames 5
 ```
@@ -107,15 +107,15 @@ train_rnn.py --epochs 50 --early-stopping-patience 5 -lr 1e-4 -wd 1e-4 --pred 5 
 ## Inference
 The models are assessed using the F1 score, and to facilitate further analysis, we additionally provide the confusion matrices.
 
-Evaluate hybrid model:
+**Evaluate hybrid model:**
 ```
 python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --max-frames 5 --pred 5 --mode hybrid
 ```
-Evaluate cnn model:
+**Evaluate cnn model:**
 ```
 python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --pred 5 --mode cnn_only
 ```
-Evaluate rnn model:
+**Evaluate rnn model:**
 ```
 python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --max-frames 5 --pred 5 --mode rnn_only
 ```
