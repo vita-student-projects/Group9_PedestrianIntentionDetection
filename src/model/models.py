@@ -283,59 +283,26 @@ def build_encoder_res18(args, hidden_dim=256, activation='relu'):
     Construct CNN encoder with resnet-18 backbone
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if args.encoder_type == 'CC': #use crop-context encoder
-        if args.encoder_pretrained:
-             res18 = ResnetBlocks(torchvision.models.resnet18(pretrained=False))
-             res_backbone = res18.build_backbone(use_pool=True, use_last_block=True, pifpaf_bn=False)
-             res18_cc = Res18Crop(backbone=res_backbone)
-             res18_cc.to(device)
-             checkpoint_path = args.path_to_encoder # change it here to load your fine-tuned encoder
-             _ = load_from_checkpoint(checkpoint_path, res18_cc, optimizer=None, scheduler=None, verbose=True)
-             # remove fc
-             res_modules = list(res18_cc.children())[:3]  # delete the last fc layer.
-             cnn_gpu = nn.Sequential(*res_modules)
-        else:
-            if args.mobilenetsmall:
-                print('Using mobilenetv3 small as cnn encoder!!')
-                # small mobilev3 model
-                mobilev3_cpu = torchvision.models.mobilenet_v3_small(pretrained=True)
-                cnn_gpu = mobilev3_cpu.to(device)
-            elif args.mobilenetbig:
-                print('Using mobilenetv3 big as cnn encoder!!')
-                # big mobilev3 model
-                mobilev3_cpu = torchvision.models.mobilenet_v3_large(pretrained=True)
-                cnn_gpu = mobilev3_cpu.to(device)
-            else:
-                print('Using resnet18 cnn encoder!!')
-                res18= torchvision.models.resnet18(pretrained=True)
-                # remove last fc
-                res18.fc = torch.nn.Identity()
-                cnn_gpu = res18.to(device)
-        if args.mobilenetsmall or args.mobilenetbig:
-            encoder_cnn = MobilenetCropEncoder(mobilenet=cnn_gpu, CNN_embed_dim=hidden_dim, activation=activation)
-        else:
-            encoder_cnn = Res18CropEncoder(resnet=cnn_gpu, CNN_embed_dim=hidden_dim, activation=activation)
+    if args.backbone == 'mobilenetsmall':
+        print('Using mobilenetv3 small as cnn encoder!!')
+        # small mobilev3 model
+        mobilev3_cpu = torchvision.models.mobilenet_v3_small(pretrained=True)
+        cnn_gpu = mobilev3_cpu.to(device)
+    elif args.backbone == 'mobilenetbig':
+        print('Using mobilenetv3 big as cnn encoder!!')
+        # big mobilev3 model
+        mobilev3_cpu = torchvision.models.mobilenet_v3_large(pretrained=True)
+        cnn_gpu = mobilev3_cpu.to(device)
     else:
-         if args.encoder_pretrained:
-             res18 = ResnetBlocks(torchvision.models.resnet18(pretrained=False))
-             res_till_4 = res18.build_backbone(use_pool=False, use_last_block=False, pifpaf_bn=False)
-             last_block = res18.block5()
-             res18_roi = Res18RoI(res_till_4, last_block)
-             res18_roi.to(device)
-             checkpoint_path = args.path_to_encoder # change it here
-             _ = load_from_checkpoint(checkpoint_path, res18_roi, optimizer=None, scheduler=None, verbose=True)
-         else:
-             res18 = ResnetBlocks(torchvision.models.resnet18(pretrained=True))
-             res_till_4 = res18.build_backbone(use_pool=False, use_last_block=False, pifpaf_bn=False)
-             last_block = res18.block5()
-             res18_roi = Res18RoI(res_till_4, last_block)
-             res18_roi.to(device)
-         # remove fc
-         res18_roi.FC = torch.nn.Identity()
-         res18_roi.dropout = torch.nn.Identity()
-         res18_roi.act = torch.nn.Identity()
-         # encoder
-         encoder_cnn = Res18RoIEncoder(resnet=res18_roi, CNN_embed_dim=hidden_dim, activation=activation)
+        print('Using resnet18 cnn encoder!!')
+        res18= torchvision.models.resnet18(pretrained=True)
+        # remove last fc
+        res18.fc = torch.nn.Identity()
+        cnn_gpu = res18.to(device)
+    if args.backbone in ['mobilenetsmall', 'mobilenetbig']:
+        encoder_cnn = MobilenetCropEncoder(mobilenet=cnn_gpu, CNN_embed_dim=hidden_dim, activation=activation)
+    else:
+        encoder_cnn = Res18CropEncoder(resnet=cnn_gpu, CNN_embed_dim=hidden_dim, activation=activation)
     encoder_cnn.to(device)
     return encoder_cnn
 
