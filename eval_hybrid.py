@@ -44,7 +44,7 @@ def get_args():
 
 def build_loader(args, intent_seqs, TRANSFORM, image_dir):
     ds = IntentionSequenceDataset(intent_seqs, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM)
-    loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=False)
+    loader = torch.utils.data.DataLoader(ds, batch_size=1, num_workers=4 ,shuffle=False)
     return loader
 
     
