@@ -6,13 +6,25 @@ The goal of pedestrian intention prediction is to determine, for each prediction
 ![Task](figure/task.png)
 
 ### Contribution Overview
-Drawing inspiration from the *Pedestrian Stop and Go Forecasting with Hybrid Feature Fusion* [1], which focuses on state transition prediction, we adapt their model and approach to our specific crossing/non-crossing task. The model including four modules: **visual information** (encode with CNN), **position and relative velocity** (bounding box), **pedestrain behavior**, **scene description**. In order to maintain consistency and improve the system's performance, we made two important decisions. Firstly, we opted to eliminate scene descriptions from the model to mitigate the risk of overfitting on scene attributes, which can adversely affect evaluation results. This adjustment enables the model to concentrate on learning other pertinent information more efficiently. Secondly, we also chose to exclude behavior data from the system. This decision was driven by the challenge of obtaining such data in real-life scenarios, ensuring that our system remains applicable and practical in real-world applications.
+Drawing inspiration from the *Pedestrian Stop and Go Forecasting with Hybrid Feature Fusion* [1], which focuses on state transition prediction, we adapt their model and approach to our specific crossing/non-crossing task. The model including four modules: **visual information** (encode with CNN), **position and relative velocity** (bounding box), **pedestrain behavior**, **scene description**. 
 
 ![Model](figure/model.png)
 
 The model employs individual LSTM units for three of modalities and applies a hybrid fusion technique, combining linear projections and concatenations, to integrate the multi-modal embeddings and obtain the final prediction.
 
 ## Experimental Setup
+In order to maintain consistency and improve the system's performance, we made two important decisions. Firstly, we opted to eliminate scene descriptions from the model to mitigate the risk of overfitting on scene attributes, which can adversely affect evaluation results. This adjustment enables the model to concentrate on learning other pertinent information more efficiently. Secondly, we also chose to exclude behavior data from the system. This decision was driven by the challenge of obtaining such data in real-life scenarios, ensuring that our system remains applicable and practical in real-world applications.
+
+Prior to training the hybrid model, we separately trained the CNN encoder with Resnet18 Backbone (image module) and LSTM encoder (pedestrian motion). These models were then utilized as pretrained checkpoints during the training of the hybrid model.
+<p align="center">
+  <img src="figure/cnn_encoder.png" alt="Pipeline of training cnn encoder">
+</p>
+<p align="center"><em>Pipeline of training cnn encoder</em></p>
+
+<p align="center">
+  <img src="figure/rnn_encoder.png" alt="Pipeline of training rnn encoder">
+</p>
+<p align="center"><em>Pipeline of training rnn encoder for pedestrian motion</em></p>
 
 ## Dataset
 **JAAD** [2] has been selected as the dataset. **JAAD** focuses on investigating pedestrian road crossing behaviors using a dataset comprising 346 videos which encompassing a range of weather and lighting conditions. Each pedestrian in the dataset is annotated with bounding boxes, behavioral data, and demographic information. 
@@ -69,22 +81,10 @@ Traning hybrid model:
 ```
 train_crnn.py --cnn-encoder-path checkpoints/upbeat-wood-247/CNN_Encoder.pt --rnn-decoder-path checkpoints/vague-darkness-248/LSTM_pos_vel.pt --pred 5 --max-frame 5 -lr 5e-6 -wd 1e-2 --early-stopping-patience 5
 ```
-We trained a hybrid model using pretrained checkpoints for both the [cnn encoder](??????) (image module) and the [rnn encoder](????) (pedestrian motion).
-
-<p align="center">
-  <img src="figure/cnn_encoder.png" alt="Pipeline of training cnn encoder">
-</p>
-<p align="center"><em>Pipeline of training cnn encoder</em></p>
-
 Training cnn encoder:
 ```
 train_cnn.py --epochs 50 --early-stopping-patience 5 -wd 1e-3 --pred 5 -lr 1e-5
 ```
-
-<p align="center">
-  <img src="figure/rnn_encoder.png" alt="Pipeline of training rnn encoder">
-</p>
-<p align="center"><em>Pipeline of training rnn encoder for pedestrian motion</em></p>
 
 Training rnn encoder:
 ```
@@ -92,9 +92,24 @@ train_rnn.py --epochs 50 --early-stopping-patience 5 -lr 1e-4 -wd 1e-4 --pred 5 
 ```
 
 ## Inference
+The models are assessed using the F1 score, and to facilitate further analysis, we additionally provide the confusion matrices.
+
+Evaluate hybrid model:
+```
+python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --max-frames 5 --pred 5 --mode hybrid
+```
+Evaluate cnn model:
+```
+python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --pred 5 --mode cnn_only
+```
+Evaluate rnn model:
+```
+python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --max-frames 5 --pred 5 --mode rnn_only
+```
 
 ## Results
-
+[cnn encoder](https://wandb.ai/arinaruck/dlav-intention-prediction/runs/3qb1j952/workspace?workspace=user-arinaruck)
+[rnn encoder](https://wandb.ai/arinaruck/dlav-intention-prediction/runs/3qb1j952?workspace=user-arinaruck) (pedestrian motion).
 ## Conclusion
 
 ## Reference
