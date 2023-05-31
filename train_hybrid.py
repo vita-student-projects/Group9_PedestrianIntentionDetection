@@ -5,13 +5,13 @@ import time
 import numpy as np
 from tqdm import tqdm
 import wandb
-from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
+from sklearn.metrics import f1_score, average_precision_score
 from src.dataset.loader import IntentionSequenceDataset
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
 from src.transform.preprocess import ImageTransform, CropBoxWithBackgroud, Compose
 from src.model.models import build_encoder_res18, DecoderRNN_IMBS
 from src.dataset.utils import build_dataloaders
-from src.utils import count_parameters, find_best_threshold, seed_torch, setup_wandb, log_metrics, prepare_cp_path, log_to_stdout
+from src.utils import prep_pred_storage, count_parameters, find_best_threshold, seed_torch, setup_wandb, log_metrics, prepare_cp_path, log_to_stdout, print_eval_metrics
 from src.early_stopping import EarlyStopping, load_from_checkpoint
 
 MEAN = [0.3104, 0.2813, 0.2973]
@@ -31,10 +31,6 @@ def get_args():
                         help='ratio of balanced instances(1/0)')
     parser.add_argument('--seed', default=99, type=int,
                         help='random seed for sampling')
-    parser.add_argument('--jitter-ratio', default=-1.0, type=float,
-                        help='jitter bbox for cropping')
-    parser.add_argument('--bbox-min', default=0, type=int,
-                        help='minimum bbox size')
     parser.add_argument('--encoder-type', default='CC', type=str,
                         help='encoder for images, CC(crop-context) or RC(roi-context)')
     parser.add_argument('--encoder-pretrained', default=False, 
@@ -63,13 +59,9 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
 
     encoder_CNN.fc.train()
     decoder_RNN.train()
+
     epoch_loss = 0.0
-
-    n_steps = len(loader)
-    batch_size = loader.batch_size
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, n_steps, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
@@ -106,11 +98,7 @@ def val_epoch(loader, model, criterion, device, epoch):
 
     epoch_loss = 0.0
 
-    n_steps = len(loader)
-    batch_size = loader.batch_size
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, n_steps, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
@@ -144,11 +132,7 @@ def eval_model(loader, model, device):
     decoder_RNN.eval()
 
 
-    batch_size = loader.batch_size
-    n_steps = len(loader)
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, _, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
@@ -159,12 +143,9 @@ def eval_model(loader, model, device):
         preds[step * batch_size: (step + 1) * batch_size] = outputs_RNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
-    train_score = average_precision_score(tgts, preds)
     best_thr = model['best_thr']
-    f1 = f1_score(tgts, preds > best_thr)
-    log_metrics(tgts, preds, best_thr, f1, train_score, 'test', 0)
-    preds = preds > best_thr
-    print(classification_report(tgts, preds))
+    f1, ap = print_eval_metrics(tgts, preds, best_thr)
+    log_metrics(tgts, preds, best_thr, f1, ap, 'test', 0)
 
 
 
@@ -172,8 +153,6 @@ def prepare_data(anns_paths, image_dir, args, image_set, load_image=True):
     MEAN = [0.3104, 0.2813, 0.2973]
     STD = [0.1761, 0.1722, 0.1673]
 
-
-def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences = build_pedb_dataset_jaad(
         anns_paths["JAAD"]["anns"], 
         anns_paths["JAAD"]["split"], 
@@ -183,6 +162,7 @@ def prepare_data(anns_paths, image_dir, args, image_set):
         max_frames=args.max_frames, 
         verbose=True
     )
+
     if not image_set == "test":
         intent_sequences = balance(intent_sequences, seed=args.seed)
 
@@ -208,8 +188,7 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                                  ]),
                              ) 
                             ])
-
-    ds = IntentionSequenceDataset(intent_sequences, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
+    ds = IntentionSequenceDataset(intent_sequences, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM,load_image=load_image)
     return ds
 
 
@@ -221,7 +200,7 @@ def main():
     run_name = setup_wandb(args, run_mode)
 
     # loading data
-    train_loader, val_loader, test_loader = build_dataloaders(args, prepare_data, load_image=False)
+    train_loader, val_loader, test_loader = build_dataloaders(args, prepare_data, load_image=True)
     
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -235,8 +214,9 @@ def main():
     decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
                                     h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
     print(f'Number of trainable parameters: decoder: {count_parameters(decoder_lstm)}, encoder train: {count_parameters(encoder_res18)}')
-    model = {'encoder': encoder_res18, 'decoder': decoder_lstm, 'best_thr': 0.5}
-    wandb.watch((encoder_res18, decoder_lstm), log_freq=10)
+
+    model = {'encoder': encoder_res18, 'decoder': decoder_lstm,'best_thr': 0.5}
+
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     crnn_params = list(encoder_res18.fc.parameters()) + list(decoder_lstm.parameters())
