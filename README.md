@@ -86,7 +86,7 @@ This project has been tested with Python 3.7.7, PyTorch 1.10.1, CUDA 11.1.
 ## Train
 **Hyperparameter:**
 
-max-frames: observation frame length (if not specified, default fps=5, so max-frames=5 means 1 seconds)
+max-frames: observation frame length (if not specified, default fps=5, so max-frames=5 means 1 second)
 
 pred: prediction frame length
 
