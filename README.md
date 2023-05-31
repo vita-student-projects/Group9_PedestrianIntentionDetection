@@ -84,6 +84,11 @@ pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 torchaudio==0.10.1 -f 
 This project has been tested with Python 3.7.7, PyTorch 1.10.1, CUDA 11.1.
 
 ## Train
+Hybrid Parameters:
+
+max-frames: observation frame length (if not specified, default fps=5, so max-frames=5 means 1 seconds)
+
+pred: prediction frame length
 
 Traning hybrid model:
 ```
@@ -117,7 +122,6 @@ python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --max-frame
 
 ## Results
 
-
 |  | Test/f1 |
 | -------------- | -------------- |
 | Hybrid model | 0.8035 |
@@ -135,8 +139,7 @@ The detailed plots(loss, f1, prediction distribution ....) could be found in the
 ![Alt Text](figure/demo_video_0071.gif)
 
 ## Conclusion
-
-
+Sum up, the work predicts pedestrian road crossing behaviors using the hybrid model, and also cnn encoder and rnn encoder. 
 
 ## Reference
 [1] Dongxu Guo, Taylor Mordan, and Alexandre Alahi. *Pedestrian Stop and Go Forecasting with Hybrid Feature Fusion*. 2022. [arXiv: 2203.02489 [cs.CV]](https://arxiv.org/abs/2203.02489) .
