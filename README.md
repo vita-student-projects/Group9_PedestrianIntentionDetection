@@ -132,7 +132,7 @@ The detailed plots(loss, f1, prediction distribution ....) could be found in the
 ### Visualization
 **Green**: crossing **Red**: non-crossing
 **Target**: word **Prediction**: bounding box
-![Alt Text](figure\demo_video_0071.gif)
+![Alt Text](figure/demo_video_0071.gif)
 
 ## Conclusion
 
