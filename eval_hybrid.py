@@ -1,148 +1,186 @@
 import argparse
-import numpy as np
 import torch
 from tqdm import tqdm
-from sklearn.metrics import average_precision_score, classification_report
-from src.dataset.trans.data import *
-from src.dataset.loader import *
-from src.model.basenet import *
-from src.model.baselines import *
-from src.model.models import *
-from src.transform.preprocess import *
-from src.utils import *
-from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, unpack_batch
+from src.early_stopping import load_from_checkpoint
+from src.model.models import Res18Classifier, RNNClassifier, DecoderRNN_IMBS, build_encoder_res18
+from src.dataset.loader import define_path, IntentionSequenceDataset
+from src.transform.preprocess import ImageTransform, Compose, CropBoxWithBackgroud
+from src.utils import prep_pred_storage, print_eval_metrics
+import torchvision.transforms as transforms
+
+MEAN = [0.3104, 0.2813, 0.2973]
+STD = [0.1761, 0.1722, 0.1673]
+
+EMBEDDING_DIM = 256
+EVAL_MODES = ['cnn_only', 'rnn_only', 'hybrid']
+
+IMAGE_TRANSFORM = Compose([
+    CropBoxWithBackgroud(size=224),
+    ImageTransform(
+        transforms.Compose([
+        transforms.ToTensor(), 
+        transforms.Normalize(MEAN, STD),
+        ]),
+        ) 
+    ])
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description='cropped frame model Training')
+    parser = argparse.ArgumentParser(description='cropped frame model evaluation')
 
     parser.add_argument('--jaad', default=True, action='store_true',
                         help='use JAAD dataset')
-    parser.add_argument('--pie', default=False, action='store_true',
-                        help='use PIE dataset')
-    parser.add_argument('--titan', default=False, action='store_true',
-                        help='use TITAN dataset')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
     parser.add_argument('--max-frames', default=5, type=int,
                         help='maximum number of frames in histroy sequence')
-    parser.add_argument('--pred', default=10, type=int,
+    parser.add_argument('--pred', default=5, type=int,
                         help='prediction length, predicting-ahead time')
     parser.add_argument('--balancing-ratio', default=1.0, type=float,
                         help='ratio of balanced instances(1/0)')
     parser.add_argument('--jitter-ratio', default=-1.0, type=float,
                         help='jitter bbox for cropping')
-    parser.add_argument('--bbox-min', default=0, type=int,
-                        help='minimum bbox size')
     parser.add_argument('-s', '--seed', type=int, default=99,
                         help='set random seed for sampling')
-
-    parser.add_argument('--encoder-type', default='CC', type=str,
-                        help='encoder for images, CC(crop-context) or RC(roi-context)')
-    parser.add_argument('--encoder-pretrained', default=False, 
-                        help='load pretrained encoder')
-    parser.add_argument('--encoder-path', default='', type=str,
-                        help='path to encoder checkpoint for loading the pretrained weights')
-    parser.add_argument('--decoder-path', default='', type=str,
-                        help='path to LSTM decoder checkpoints')
-
+    parser.add_argument('-cp', '--checkpoint-path', type=str,
+                        help='path to the checkpoint for loading pretrained weights')
+    parser.add_argument('-nw', '--num-workers', type=int, default=4, 
+                        help='number of workers for data loading')
+    parser.add_argument("--mode", type=str)
+    parser.add_argument("--backbone", type=str, default="resnet18")
     args = parser.parse_args()
 
     return args
 
 
+def build_loader(args, intent_seqs, TRANSFORM, image_dir, load_image=True):
+    ds = IntentionSequenceDataset(intent_seqs, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM, load_image=load_image)
+    loader = torch.utils.data.DataLoader(ds, batch_size=1, num_workers=args.num_workers, shuffle=False)
+    return loader
 
-def eval_model(loader, model, device):
+    
+@torch.no_grad()
+def eval_cnn(loader, model, device):
     # swith to evaluate mode
     encoder_CNN = model['encoder']
+    preds, tgts, _, _ = prep_pred_storage(loader)
+
+    for step, inputs in enumerate(tqdm(loader)):
+        images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
+        outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
+        
+        preds[step] = outputs_CNN.detach().cpu().squeeze()
+        tgts[step] = targets.detach().cpu().squeeze()
+
+    print_eval_metrics(tgts, preds, model['best_thr'])
+
+
+@torch.no_grad()
+def eval_rnn(loader, model, device):
+    # swith to evaluate mode
     decoder_RNN = model['decoder']
-    encoder_CNN.eval()
-    decoder_RNN.eval()
-    y_true = []
-    y_pred = []
-    y_out = []
-    scores = []
-    with torch.no_grad():
-        for i, inputs in enumerate(tqdm(loader)):
-            # evaluate model
-            targets = inputs['label'].to(device, non_blocking=True)
-            images = inputs['image'].to(device, non_blocking=True)
-            bboxes_ped = inputs['bbox_ped']
-            seq_len = inputs['seq_length']
-            behavior = inputs['behavior'].to(device, non_blocking=True)
-            scene = inputs['attributes'].to(device, non_blocking=True)
-            bbox_ped_list = reshape_bbox(bboxes_ped, device)
-            pv = bbox_to_pv(bbox_ped_list).to(device, non_blocking=True)
-            outputs_CNN = encoder_CNN(images, seq_len)
-            outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, 
-                                      xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
-            for j in range(targets.size()[0]):
-                y_true.append(int(targets[j].item()))
-                y_out.append(float(outputs_RNN[j].item()))
-                score = 1.0 - abs(float(outputs_RNN[j].item()) - float(targets[j].item()))
-                scores.append(score)
-                if outputs_RNN[j] >= 0.5:
-                   y_pred.append(1)
-                else:
-                   y_pred.append(0)
-                
-    np_scores = np.array(scores)
-    scores_mean = np.mean(np_scores)
-    # AP  = average_precision_score(y_true, y_out)
+    preds, tgts, _, _ = prep_pred_storage(loader)
 
-    print(classification_report(y_true, y_pred))
+    for step, inputs in enumerate(tqdm(loader)):
+        _, seq_len, pos_vel, _, _, targets = unpack_batch(inputs, device)
+        outputs_CNN = decoder_RNN(pos_vel, seq_len).squeeze(-1)
+        
+        preds[step] = outputs_CNN.detach().cpu().squeeze()
+        tgts[step] = targets.detach().cpu().squeeze()
+
+    print_eval_metrics(tgts, preds, model['best_thr'])
 
 
-    return  scores_mean
+@torch.no_grad()
+def eval_hybrid(loader, model, device):
+    encoder_CNN, decoder_RNN = model['encoder'], model['decoder']
+
+    preds, tgts, _, _ = prep_pred_storage(loader)
+
+    for step, inputs in enumerate(tqdm(loader)):
+        images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
+        outputs_CNN = encoder_CNN(images, seq_len)
+        outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, 
+                                    xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
+        
+        preds[step] = outputs_RNN.detach().cpu().squeeze()
+        tgts[step] = targets.detach().cpu().squeeze()
+
+    print_eval_metrics(tgts, preds, model['best_thr'])
 
 
+EVAL_FUNCTIONS = {'cnn_only': eval_cnn, 'rnn_only': eval_rnn, 'hybrid': eval_hybrid}
 
 def main():
     args = get_args()
+    if args.mode == 'cnn_only':
+        args.max_frames = 1
+    if args.mode not in EVAL_MODES:
+        raise ValueError(f'invalid mode, please choose from {", ".join(EVAL_MODES)}')
     # loading data
-    print('Annotation loading-->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
-    print('------------------------------------------------------------------')
-    anns_paths_eval, image_dir_eval = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
-    print(anns_paths_eval)
-    print(image_dir_eval)
-    print('-->>')
-    # eval_data = TransDataset(data_paths=anns_paths_eval, image_set="test", verbose=False)
-    # trans_eval = eval_data.extract_trans_history(mode=args.mode, fps=args.fps, max_frames=None, verbose=True)
-    # non_trans_eval = eval_data.extract_non_trans(fps=5, max_frames=None, verbose=True)
-    # print('-->>')
-    # sequences_eval = extract_pred_sequence(trans=trans_eval, non_trans=non_trans_eval, pred_ahead=args.pred,
-    #                                       balancing_ratio=1.0, neg_in_trans=True,
-    #                                       bbox_min=args.bbox_min, max_frames=args.max_frames, seed=args.seed, verbose=True)
-    # train_intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set = "train", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    eval_intent_sequences = build_pedb_dataset_jaad(anns_paths_eval["JAAD"]["anns"], anns_paths_eval["JAAD"]["split"], image_set = "test", fps=args.fps,prediction_frames=args.pred, verbose=True)
-    eval_intent_sequences_cropped = subsample_and_balance(eval_intent_sequences, balance=False, max_frames=args.max_frames, seed=args.seed)
-    print('------------------------------------------------------------------')
-    print('Finish annotation loading', '\n')
+    anns_paths_eval, image_dir_eval = define_path(use_jaad=args.jaad, use_pie=False, use_titan=False)
+
+    normal_intent_sequences = build_pedb_dataset_jaad(
+        anns_paths_eval["JAAD"]["anns"], 
+        anns_paths_eval["JAAD"]["split"], 
+        image_set = "test", 
+        fps=args.fps,
+        prediction_frames=args.pred, 
+        max_frames=args.max_frames,
+        verbose=True)
+
+    hard_intent_sequences = build_pedb_dataset_jaad(
+        anns_paths_eval["JAAD"]["anns"], 
+        anns_paths_eval["JAAD"]["split"], 
+        image_set = "test", 
+        fps=args.fps,
+        prediction_frames=args.pred, 
+        max_frames=args.max_frames,
+        verbose=True,
+        transition_only=True)
+    
 
     # load model
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    encoder_res18 = build_encoder_res18(args)
-    decoder_lstm = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
-                                    h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
-    decoder_path = args.decoder_path
-    _ = load_from_checkpoint(decoder_path, decoder_lstm, optimizer=None, scheduler=None, verbose=True)
-    model_gpu = {'encoder': encoder_res18, 'decoder': decoder_lstm}
-    jitter_ratio = None if args.jitter_ratio < 0 else args.jitter_ratio
-    crop_preprocess = CropBox(size=224, padding_mode='pad_resize', jitter_ratio=jitter_ratio)
-    VAL_TRANSFORM = crop_preprocess
-    # val_instances = PaddedSequenceDataset(sequences_eval, image_dir=image_dir_eval, padded_length=args.max_frames,
-    #                                         hflip_p = 0.0, preprocess=VAL_TRANSFORM)
-    test_ds = IntentionSequenceDataset(eval_intent_sequences_cropped, image_dir=image_dir_eval, hflip_p = 0.5, preprocess=VAL_TRANSFORM)
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False)
 
-    print(f'Test loader : {len(test_loader)}')
-    print(f'Start evaluation on balanced test set, PVIBS, jitter={jitter_ratio}, bbox-min={args.bbox_min}')
-    test_score = eval_model(test_loader, model_gpu, device)
-    print('\n', '-----------------------------------------------------')
-    print('----->')
-    print('Model Evaluation score: {:.4f}'.format(test_score))
-    print('--------------------------------------------------------', '\n')
+    if args.mode == 'cnn_only':
+        
+        encoder_res18 = Res18Classifier(CNN_embed_dim=EMBEDDING_DIM, activation="sigmoid").to(device)
+        encoder_res18.eval()
+        model = {'encoder': encoder_res18}
+        transform, load_image  = IMAGE_TRANSFORM, True
     
+    elif args.mode == 'rnn_only':
+
+        POS_VEL_DIM = 8
+        rnn_classifier = RNNClassifier(input_size=POS_VEL_DIM, rnn_embeding_size=EMBEDDING_DIM, classification_head_size=128).to(device)
+        model = {'decoder': rnn_classifier}
+        transform, load_image = None, False
+
+    elif args.mode == 'hybrid':
+        encoder_CNN = build_encoder_res18(args)
+        decoder_RNN = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
+                                    h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
+        encoder_CNN.eval()
+        decoder_RNN.eval()
+        model = {'encoder': encoder_CNN, 'decoder': decoder_RNN}
+
+        transform, load_image = IMAGE_TRANSFORM, True
+
+    load_from_checkpoint(model, args.checkpoint_path)    
+
+    normal_loader = build_loader(args, normal_intent_sequences, transform, image_dir_eval, load_image=load_image)
+    hard_loader = build_loader(args, hard_intent_sequences, transform, image_dir_eval, load_image=load_image)
+
+    eval_function = EVAL_FUNCTIONS[args.mode]
+
+    print(f'Normal test loader : {len(normal_loader)}, Hard (transition only) test loader : {len(hard_loader)}')
+    print(f'Evaluation on full test set')
+    eval_function(normal_loader, model, device)
+    print(f'Evaluation on transition only test set')
+    eval_function(hard_loader, model, device)
     
 
 if __name__ == '__main__':
