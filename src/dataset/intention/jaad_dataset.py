@@ -209,7 +209,7 @@ class JaadIntentionDataset:
 
 def unpack_batch(batch, device):
     targets = batch['label'].to(device, non_blocking=True)
-    images = batch['image'].to(device, non_blocking=True) if batch['image'] else torch.tensor([])
+    images = batch['image'].to(device, non_blocking=True) 
     bboxes_ped = batch['bbox_ped']
     seq_len = batch['seq_length']
     behavior = batch['behavior'].to(device, non_blocking=True)
