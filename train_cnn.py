@@ -6,15 +6,14 @@ import numpy as np
 from src.dataset.loader import IntentionSequenceDataset, define_path
 from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 import torchvision
-from src.utils import count_parameters, find_best_threshold, seed_torch, setup_wandb, log_metrics, prepare_cp_path, log_to_stdout
+from src.utils import prep_pred_storage, print_eval_metrics, count_parameters, find_best_threshold, seed_torch, setup_wandb, log_metrics, prepare_cp_path, log_to_stdout
 from src.dataset.utils import build_dataloaders
 from src.model.models import Res18Classifier
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
-from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
-from pathlib import Path
-from torch.utils.data import DataLoader
+from sklearn.metrics import classification_report, f1_score, average_precision_score
 import wandb
 from src.early_stopping import EarlyStopping, load_from_checkpoint
+
 
 # only training the CNN on a signle frame
 MAX_FRAMES = 1
@@ -64,12 +63,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
     encoder_CNN.fc.train()
 
     epoch_loss = 0.0
-
-    n_steps = len(loader)
-    batch_size = loader.batch_size
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, n_steps, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
@@ -102,12 +96,7 @@ def val_epoch(loader, model, criterion, device, epoch):
     encoder_CNN.fc.eval()
 
     epoch_loss = 0.0
-
-    n_steps = len(loader)
-    batch_size = loader.batch_size
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, n_steps, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
@@ -138,11 +127,7 @@ def eval_model(loader, model, device):
     encoder_CNN = model['encoder']
     encoder_CNN.fc.eval()
     
-    batch_size = loader.batch_size
-    n_steps = len(loader)
-
-    preds = np.zeros(n_steps * batch_size)
-    tgts = np.zeros(n_steps * batch_size)
+    preds, tgts, _, batch_size = prep_pred_storage(loader)
 
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
@@ -150,16 +135,20 @@ def eval_model(loader, model, device):
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
-    train_score = average_precision_score(tgts, preds)
     best_thr = model['best_thr']
-    f1 = f1_score(tgts, preds > best_thr)
-    log_metrics(tgts, preds, best_thr, f1, train_score, 'test', 0)
-    preds = preds > best_thr
-    print(classification_report(tgts, preds))
+    f1, ap = print_eval_metrics(tgts, preds, best_thr)
+    log_metrics(tgts, preds, best_thr, f1, ap, 'test', 0)
 
 
 def prepare_data(anns_paths, image_dir, args, image_set,load_image=True):
-    intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set=image_set, fps=args.fps, prediction_frames=args.pred, verbose=True)
+    intent_sequences = build_pedb_dataset_jaad(
+        anns_paths["JAAD"]["anns"], 
+        anns_paths["JAAD"]["split"], 
+        image_set=image_set, 
+        fps=args.fps, 
+        prediction_frames=args.pred, 
+        max_frames=MAX_FRAMES,
+        verbose=True)
     if not image_set == "test":
         intent_sequences = balance(intent_sequences, seed=args.seed)
 
@@ -185,6 +174,7 @@ def prepare_data(anns_paths, image_dir, args, image_set,load_image=True):
                                  ]),
                              ) 
                             ])
+        
     ds = IntentionSequenceDataset(intent_sequences, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
@@ -196,7 +186,7 @@ def main():
     run_name = setup_wandb(args, run_mode)
 
     # loading data
-    train_loader, val_loader, test_loader = build_dataloaders(args, prepare_data, load_image=False)
+    train_loader, val_loader, test_loader = build_dataloaders(args, prepare_data, load_image=True)
    
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -207,7 +197,8 @@ def main():
     encoder_res18.freeze_backbone()
     encoder_res18.eval()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
-    model = {'encoder': encoder_res18, 'best_thr': 0.5}
+    model = {'encoder': encoder_res18,'best_thr': 0.5}
+    
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     cnn_params = list(encoder_res18.fc.parameters())
