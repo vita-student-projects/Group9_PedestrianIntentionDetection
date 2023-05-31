@@ -1,0 +1,25 @@
+program: train_cnn.py
+command:
+  - python3
+  - ${program}
+  - "--batch-size"
+  - "4"
+  - "--early-stopping-patience"
+  - "5"
+  - "--epochs"
+  - 50
+  - "--pred"
+  - 1
+  - "-nw"
+  - 4
+name: 'grid sweep, cnn only'
+method: grid
+metric:
+  name: val/best_f1
+  goal: maximize
+parameters:
+  learning_rate:
+    values: [1e-5, 5e-5, 1e-4, 5e-4]
+  weight_decay:
+    values: [1e-4, 1e-3, 1e-2, 5e-1]
+
