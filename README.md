@@ -129,8 +129,11 @@ python eval_hybrid.py -cp checkpoints/vague-darkness-248/rnn_only_lr0.0001_wd0.0
 | RNN encoder | 0.812 |
 
 The detailed plots(loss, f1, prediction distribution ....) could be found in the following link:
+
 [hybrid model]( https://wandb.ai/arinaruck/dlav-intention-prediction/runs/h8g4l4cn/overview?workspace=user-arinaruck)
+
 [cnn encoder](https://wandb.ai/arinaruck/dlav-intention-prediction/runs/5pom7rto?workspace=user-arinaruck)
+
 [rnn encoder](https://wandb.ai/arinaruck/dlav-intention-prediction/runs/3qb1j952?workspace=user-arinaruck)
 
 ### Visualization
