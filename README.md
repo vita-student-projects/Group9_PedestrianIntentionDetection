@@ -67,7 +67,7 @@ This project has been tested with Python 3.7.7, PyTorch 1.10.1, CUDA 11.1.
 
 Traning hybrid model:
 ```
-train_crnn.py --cnn-encoder-path checkpoints/upbeat-wood-247/CNN_Encoder.pt --rnn-decoder-path checkpoints/vague-darkness-248/LSTM_pos_vel.pt --pred 5 --max-frame 5 -lr 1e-5 -wd 1e-2 --early-stopping-patience 5
+train_crnn.py --cnn-encoder-path checkpoints/upbeat-wood-247/CNN_Encoder.pt --rnn-decoder-path checkpoints/vague-darkness-248/LSTM_pos_vel.pt --pred 5 --max-frame 5 -lr 5e-6 -wd 1e-2 --early-stopping-patience 5
 ```
 We trained a hybrid model using pretrained checkpoints for both the [cnn encoder](??????) (image module) and the [rnn encoder](????) (pedestrian motion).
 
@@ -78,7 +78,7 @@ We trained a hybrid model using pretrained checkpoints for both the [cnn encoder
 
 Training cnn encoder:
 ```
-
+train_cnn.py --epochs 50 --early-stopping-patience 5 -wd 1e-3 --pred 5 -lr 1e-5
 ```
 
 <p align="center">
@@ -88,7 +88,7 @@ Training cnn encoder:
 
 Training rnn encoder:
 ```
-
+train_rnn.py --epochs 50 --early-stopping-patience 5 -lr 1e-4 -wd 1e-4 --pred 5 --max-frames 5
 ```
 
 ## Inference
