@@ -20,6 +20,8 @@ from src.early_stopping import EarlyStopping, load_from_checkpoint
 MAX_FRAMES = 1
 OUTPUT_DIM = 1
 
+MEAN = [0.3104, 0.2813, 0.2973]
+STD = [0.1761, 0.1722, 0.1673]
 
 def get_args():
     parser = argparse.ArgumentParser(description='Train hybrid model')
@@ -195,14 +197,17 @@ def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
 
     crop_with_background = CropBoxWithBackgroud(size=224)
-    normalization = torchvision.transforms.Normalize([0., 0., 0.], [1., 1., 1.])
     if image_set == 'train':
         TRANSFORM = Compose([
                              crop_with_background,
-                             ImageTransform(torchvision.transforms.ColorJitter(
-                                   brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)),
-                             normalization,
-                            ])
+                             ImageTransform(
+                                 torchvision.transforms.Compose([
+                                     torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                                     torchvision.transforms.ToTensor(),
+                                     torchvision.transforms.Normalize(MEAN, STD),
+                                 ]),
+                             ),
+                           ])
     else:
         TRANSFORM = Compose([
                              crop_with_background,
