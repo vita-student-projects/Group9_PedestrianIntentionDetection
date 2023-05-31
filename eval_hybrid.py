@@ -116,6 +116,8 @@ EVAL_FUNCTIONS = {'cnn_only': eval_cnn, 'rnn_only': eval_rnn, 'hybrid': eval_hyb
 
 def main():
     args = get_args()
+    if args.mode == 'cnn_only':
+        args.max_frames = 1
     if args.mode not in EVAL_MODES:
         raise ValueError(f'invalid mode, please choose from {", ".join(EVAL_MODES)}')
     # loading data
@@ -144,7 +146,6 @@ def main():
     # load model
 
     if args.mode == 'cnn_only':
-
         encoder_res18 = Res18Classifier(CNN_embed_dim=EMBEDDING_DIM, activation="sigmoid").to(device)
         encoder_res18.eval()
         model = {'encoder': encoder_res18}
