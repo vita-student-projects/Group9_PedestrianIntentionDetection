@@ -38,7 +38,7 @@ Prior to training the hybrid model, we separately trained the CNN encoder with R
 **JAAD** [2] has been selected as the dataset. **JAAD** focuses on investigating pedestrian road crossing behaviors using a dataset comprising 346 videos which encompassing a range of weather and lighting conditions. Each pedestrian in the dataset is annotated with bounding boxes, behavioral data, and demographic information. 
 ### Label
 - **crossing/non-crossing**: {0: 'not-crossing', 1: 'crossing'}
-- 
+
 The label assigned to a given sequence of past observations corresponds to the cross/non-cross label of the given prediction timestep.
 ### Input
 - **visual context**: (channel x image height x image width)
