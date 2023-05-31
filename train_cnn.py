@@ -1,13 +1,13 @@
 import argparse
 import time
-import datetime
 from tqdm import tqdm
 import torch
 import numpy as np
 from src.dataset.loader import IntentionSequenceDataset, define_path
 from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 import torchvision
-from src.utils import count_parameters, find_best_threshold, seed_torch
+from src.utils import count_parameters, find_best_threshold, seed_torch, setup_wandb, log_metrics, prepare_cp_path, log_to_stdout
+from src.dataset.utils import build_dataloaders
 from src.model.models import Res18Classifier
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
@@ -27,10 +27,6 @@ def get_args():
     parser = argparse.ArgumentParser(description='Train hybrid model')
     parser.add_argument('--jaad', default=True, action='store_true',
                         help='use JAAD dataset')
-    parser.add_argument('--pie', default=False, action='store_true',
-                        help='use PIE dataset')
-    parser.add_argument('--titan', default=False, action='store_true',
-                        help='use TITAN dataset')
     parser.add_argument('--fps', default=5, type=int,
                         metavar='FPS', help='sampling rate(fps)')
     parser.add_argument('--pred', default=5, type=int,
@@ -55,8 +51,6 @@ def get_args():
                         help='number of epochs to train')
     parser.add_argument('-wd', '--weight-decay', metavar='WD', type=float, default=1e-5,
                         help='Weight decay', dest='wd')
-    parser.add_argument('-o', '--output', default=None,
-                        help='output file')
     parser.add_argument('--early-stopping-patience', default=3, type=int,)
     parser.add_argument("--backbone", type=str, default="resnet18")
     parser.add_argument('-nw', '--num-workers', default=4, type=int, help='number of workers for data loading')
@@ -92,7 +86,6 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-    optimizer.zero_grad()
     epoch_loss /= n_steps
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
@@ -128,14 +121,15 @@ def val_epoch(loader, model, criterion, device, epoch):
         curr_loss = loss.item()
         epoch_loss += curr_loss
 
-    wandb.log({'val/loss': epoch_loss / n_steps, 'val/epoch': epoch + 1})
+    epoch_loss /= n_steps
+    wandb.log({'val/loss': epoch_loss, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     model['best_thr'] = best_thr
 
     val_score = average_precision_score(tgts, preds)
     log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
 
-    return epoch_loss / len(loader), best_f1
+    return epoch_loss , best_f1
 
 
 @torch.no_grad()
@@ -153,7 +147,6 @@ def eval_model(loader, model, device):
     for step, inputs in enumerate(tqdm(loader)):
         images, seq_len, _, _, _, targets = unpack_batch(inputs, device)
         outputs_CNN = encoder_CNN(images, seq_len).squeeze(-1)
-        
         preds[step * batch_size: (step + 1) * batch_size] = outputs_CNN.detach().cpu().squeeze()
         tgts[step * batch_size: (step + 1) * batch_size] = targets.detach().cpu().squeeze()
 
@@ -165,30 +158,7 @@ def eval_model(loader, model, device):
     print(classification_report(tgts, preds))
 
 
-def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
-    binarized_preds = (preds > best_thr).astype(int)
-    precision = precision_score(targets, binarized_preds)
-    recall = recall_score(targets, binarized_preds)
-
-    wandb.log({f'{mode}/precision': precision , 
-               f'{mode}/recall': recall, 
-               f'{mode}/f1': best_f1, 
-               f'{mode}/AP': ap, 
-               f'{mode}/best_thr': best_thr,
-               f"{mode}/preds": wandb.Histogram(preds),
-               f'{mode}/epoch': step}, commit=True)
-    
-    print('------------------------------------------------')
-    print(f'Mode: {mode}')
-    print(f'best threshold: {best_thr:.3f}')
-    print(f'precision: {precision:.3f}')
-    print(f'recall: {recall:.3f}')
-    print(f'F1-score : {best_f1:.3f}')
-    print(f"average precision for transition prediction: {ap:.3f}")
-    print('\n')
-
-
-def prepare_data(anns_paths, image_dir, args, image_set):
+def prepare_data(anns_paths, image_dir, args, image_set,load_image=True):
     intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set=image_set, fps=args.fps, prediction_frames=args.pred, verbose=True)
     if not image_set == "test":
         intent_sequences = balance(intent_sequences, seed=args.seed)
@@ -222,28 +192,12 @@ def prepare_data(anns_paths, image_dir, args, image_set):
 def main():
     args = get_args()
     seed_torch(args.seed)
-    wandb.init(
-        project="dlav-intention-prediction",
-        config=args,
-    )
-    run_name = wandb.run.name
-
-    # define our custom x axis metric
-    for setup in ['train', 'val']:
-        wandb.define_metric(f"{setup}/epoch")
-        wandb.define_metric(f"{setup}/*", step_metric=f"{setup}/epoch")
+    run_mode = "rnn_only"
+    run_name = setup_wandb(args, run_mode)
 
     # loading data
-    print('Start annotation loading -->', 'JAAD:', args.jaad, 'PIE:', args.pie, 'TITAN:', args.titan)
-    print('------------------------------------------------------------------')
-    anns_paths, image_dir = define_path(use_jaad=args.jaad, use_pie=args.pie, use_titan=args.titan)
-
-    train_ds = prepare_data(anns_paths, image_dir, args, "train")
-    val_ds = prepare_data(anns_paths, image_dir, args, "val")
-    test_ds = prepare_data(anns_paths, image_dir, args, "test")
-    
-    print('------------------------------------------------------------------')
-    print('Finish annotation loading', '\n')
+    train_loader, val_loader, test_loader = build_dataloaders(args, prepare_data, load_image=False)
+   
     # construct and load model  
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder_res18 = Res18Classifier(CNN_embed_dim=args.cnn_embed_dim, activation="sigmoid").to(device)
@@ -259,24 +213,14 @@ def main():
     cnn_params = list(encoder_res18.fc.parameters())
     optimizer = torch.optim.Adam(cnn_params, lr=args.lr, weight_decay=args.wd)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
-
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
  
-    ds = 'JAAD'
     print(f'train loader : {len(train_loader)}')
     print(f'val loader : {len(val_loader)}')
     total_time = 0.0
     
     print(f'Start training, cnn-lstm-model, initail lr={args.lr}, weight-decay={args.wd}, training batch size={args.batch_size}')
-    if args.output is None:
-        cp_dir = Path(f'./checkpoints/{run_name}')
-        cp_dir.mkdir(parents=True, exist_ok=True)
-        save_path = cp_dir / f'CNN_Encoder_lr{args.lr}_wd{args.wd}_{ds}_pred{args.pred}_bs{args.batch_size}_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.pt'
-        print(f'Saving the model to: {save_path}')
-    else:
-        save_path = args.output
-    early_stopping = EarlyStopping(checkpoint=Path(save_path), patience=args.early_stopping_patience, verbose=True)
+    save_path = prepare_cp_path(args, run_name, run_mode)
+    early_stopping = EarlyStopping(checkpoint=save_path, patience=args.early_stopping_patience, verbose=True)
 
     # start training
     best_f1 = 0.0
@@ -292,19 +236,12 @@ def main():
             print(f'Early stopping after {epoch} epochs...')
             break
         end_epoch_time = time.time() - start_epoch_time
-        print('\n', '-----------------------------------------------------')
-        print(f'End of epoch {epoch}')
-        print('Training epoch loss: {:.4f}'.format(train_loss))
-        print('Validation epoch loss: {:.4f}'.format(val_loss))
-        print('Validation epoch f1: {:.4f}'.format(val_f1))
-        print('Epoch time: {:.2f}'.format(end_epoch_time))
-        print('--------------------------------------------------------', '\n')
+        log_to_stdout(epoch, train_loss, val_loss, val_f1, end_epoch_time)
         total_time += end_epoch_time
     print('\n', '**************************************************************')
     print(f'End training at epoch {epoch}')
     print('total time: {:.2f}'.format(total_time))
 
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=args.num_workers, pin_memory=True)
     load_from_checkpoint(model, save_path)
     print(f'Test loader : {len(test_loader)}')
     print(f'Start evaluation on test set')
