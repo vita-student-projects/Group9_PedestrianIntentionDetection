@@ -3,7 +3,7 @@ import torch
 from tqdm import tqdm
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, unpack_batch
 from src.early_stopping import load_from_checkpoint
-from src.model.models import Res18Classifier, RNNClassifier
+from src.model.models import Res18Classifier, RNNClassifier, DecoderRNN_IMBS, build_encoder_res18
 from src.dataset.loader import define_path, IntentionSequenceDataset
 from src.transform.preprocess import ImageTransform, Compose, CropBoxWithBackgroud
 from src.utils import prep_pred_storage, print_eval_metrics
@@ -13,7 +13,18 @@ MEAN = [0.3104, 0.2813, 0.2973]
 STD = [0.1761, 0.1722, 0.1673]
 
 EMBEDDING_DIM = 256
-EVAL_MODES = ['cnn_only', 'rnn_only']
+EVAL_MODES = ['cnn_only', 'rnn_only', 'hybrid']
+
+IMAGE_TRANSFORM = Compose([
+    CropBoxWithBackgroud(size=224),
+    ImageTransform(
+        transforms.Compose([
+        transforms.ToTensor(), 
+        transforms.Normalize(MEAN, STD),
+        ]),
+        ) 
+    ])
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -81,7 +92,26 @@ def eval_rnn(loader, model, device):
 
     print_eval_metrics(tgts, preds, model['best_thr'])
 
-EVAL_FUNCTIONS = {'cnn_only': eval_cnn, 'rnn_only': eval_rnn}
+
+@torch.no_grad()
+def eval_hybrid(loader, model, device):
+    encoder_CNN, decoder_RNN = model['encoder'], model['decoder']
+
+    preds, tgts, _, _ = prep_pred_storage(loader)
+
+    for step, inputs in enumerate(tqdm(loader)):
+        images, seq_len, pv, scene, behavior, targets = unpack_batch(inputs, device)
+        outputs_CNN = encoder_CNN(images, seq_len)
+        outputs_RNN = decoder_RNN(xc_3d=outputs_CNN, xp_3d=pv, 
+                                    xb_3d=behavior, xs_2d=scene, x_lengths=seq_len)
+        
+        preds[step] = outputs_RNN.detach().cpu().squeeze()
+        tgts[step] = targets.detach().cpu().squeeze()
+
+    print_eval_metrics(tgts, preds, model['best_thr'])
+
+
+EVAL_FUNCTIONS = {'cnn_only': eval_cnn, 'rnn_only': eval_rnn, 'hybrid': eval_hybrid}
 
 def main():
     args = get_args()
@@ -117,33 +147,29 @@ def main():
         encoder_res18 = Res18Classifier(CNN_embed_dim=EMBEDDING_DIM, activation="sigmoid").to(device)
         encoder_res18.eval()
         model = {'encoder': encoder_res18}
-
-        crop_with_background = CropBoxWithBackgroud(size=224)
-
-        TRANSFORM = Compose([
-            crop_with_background,
-            ImageTransform(
-                transforms.Compose([
-                transforms.ToTensor(), 
-                transforms.Normalize(MEAN, STD),
-                ]),
-            ) 
-        ])
-        load_image = True
+        transform, load_image  = IMAGE_TRANSFORM, True
     
     elif args.mode == 'rnn_only':
 
         POS_VEL_DIM = 8
         rnn_classifier = RNNClassifier(input_size=POS_VEL_DIM, rnn_embeding_size=EMBEDDING_DIM, classification_head_size=128).to(device)
         model = {'decoder': rnn_classifier}
-        TRANSFORM = None
-        load_image = False
+        transform, load_image = None, False
+
+    elif args.mode == 'hybrid':
+        encoder_CNN = build_encoder_res18(args)
+        decoder_RNN = DecoderRNN_IMBS(CNN_embeded_size=256, h_RNN_0=256, h_RNN_1=64, h_RNN_2=16,
+                                    h_FC0_dim=128, h_FC1_dim=64, h_FC2_dim=86, drop_p=0.2).to(device)
+        encoder_CNN.eval()
+        decoder_RNN.eval()
+        model = {'encoder': encoder_CNN, 'decoder': decoder_RNN}
+
+        transform, load_image = IMAGE_TRANSFORM, True
 
     load_from_checkpoint(model, args.checkpoint_path)    
 
-
-    normal_loader = build_loader(args, normal_intent_sequences, TRANSFORM, image_dir_eval, load_image=load_image)
-    hard_loader = build_loader(args, hard_intent_sequences, TRANSFORM, image_dir_eval, load_image=load_image)
+    normal_loader = build_loader(args, normal_intent_sequences, transform, image_dir_eval, load_image=load_image)
+    hard_loader = build_loader(args, hard_intent_sequences, transform, image_dir_eval, load_image=load_image)
 
     eval_function = EVAL_FUNCTIONS[args.mode]
 
