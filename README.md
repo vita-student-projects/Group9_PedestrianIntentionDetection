@@ -109,15 +109,15 @@ The models are assessed using the F1 score, and to facilitate further analysis, 
 
 **Evaluate hybrid model:**
 ```
-python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --max-frames 5 --pred 5 --mode hybrid
+python eval_hybrid.py -cp checkpoints/silvery-music-263/crnn_lr1e-05_wd0.01_JAAD_pred5_bs4_202305311752.pt --max-frames 5 --pred 5 --mode hybrid
 ```
 **Evaluate cnn model:**
 ```
-python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --pred 5 --mode cnn_only
+python eval_hybrid.py -cp checkpoints/upbeat-wood-247/CNN_Encoder_lr1e-05_wd0.001_JAAD_pred5_bs4_202305311510.pt --pred 5 --mode cnn_only
 ```
 **Evaluate rnn model:**
 ```
-python eval_hybrid.py -cp checkpoints/put_your_checkpoints_path_here --max-frames 5 --pred 5 --mode rnn_only
+python eval_hybrid.py -cp checkpoints/vague-darkness-248/rnn_only_lr0.0001_wd0.0001_JAAD_pred5_bs4_202305311554.pt --max-frames 5 --pred 5 --mode rnn_only
 ```
 
 ## Results
