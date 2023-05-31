@@ -6,8 +6,10 @@ The goal of pedestrian intention prediction is to determine, for each prediction
 ![Task](figure/task.png)
 
 ### Contribution Overview
-Drawing inspiration from the *Pedestrian Stop and Go Forecasting with Hybrid Feature Fusion* [1], which focuses on state transition prediction, we adapt their model and approach to our specific crossing/non-crossing task. The model including four modules: **visual information** (encode with CNN), **position and relative velocity** (bounding box), **pedestrain behavior**, **scene description**.
+Drawing inspiration from the *Pedestrian Stop and Go Forecasting with Hybrid Feature Fusion* [1], which focuses on state transition prediction, we adapt their model and approach to our specific crossing/non-crossing task. The model including four modules: **visual information** (encode with CNN), **position and relative velocity** (bounding box), **pedestrain behavior**, **scene description**. Due to the model's tendency to overfit on scene attributes and the resulting negative impact on evaluation results, we decided to remove scene descriptions. This allows the model to focus on learning other relevant information more effectively.
+
 ![Model](figure/model.png)
+
 The model employs individual LSTM units for three of modalities and applies a hybrid fusion technique, combining linear projections and concatenations, to integrate the multi-modal embeddings and obtain the final prediction.
 
 Furthermore, we substitute the CNN backbone (Resnet18) with MobileNet to leverage the efficiency of separable convolutions. This prioritizes improving the model's real-time performance by increasing speed rather than emphasizing quality.
@@ -30,20 +32,39 @@ b<sup>t</sup><sub>look</sub> -> {0: 'not-looking', 1: 'looking'}
 b<sup>t</sup><sub>nod</sub> -> {0: 'undefined', 1: 'nodding'}
 b<sup>t</sup><sub>hand</sub> -> {0: 'undefined', 1: 'greet',2: 'yield', 3: 'rightofway', 4: 'other'}
 ** To avoid information leakage, we removed the binary label indicating walking/non-walking.
-- **scene descriptions**:  (s<sub>tl</sub>, s<sub>in</sub>, s<sub>de</sub>, s<sub>si</sub>, s<sub>td</sub>)
-s<sub>tl</sub> -> number of traffic lanes
-s<sub>in</sub> ->  if is an intersection
-s<sub>de</sub> -> if an intersection is designated with a zebra crossing or a traffic signal
-s<sub>si</sub> ->  if an intersection is signalized
-s<sub>td</sub> ->  traffic direction (one/two-way) 
-** To avoid information leakage, we removed the label indicating pedestrian
-motion direction (lateral or longitudinal).
+
 ### Output
 - **p<sub>t</sub>**: the probability of crossing for each of the prediction timesteps
 
+### Download dataset
 
+Please follow the [instructions](https://github.com/vita-epfl/pedestrian-transition-dataset#data-preparation) to prepare the JAAD data.
+Furthermore, the prepared data also could be find in "/work/scitas-share/datasets/Vita/civil-459"
+```
+#Replace the follwing path in src/dataset/loader.py -> def define_path() to your own path
+all_anns_paths = {'JAAD': {'anns': '/work/scitas-share/datasets/Vita/civil-459/JAAD/data_cache/jaad_database.pkl',
+                          'split': 'DATA/annotations/JAAD/splits/'},
+                           }
+all_image_dir = {'JAAD': '/work/scitas-share/datasets/Vita/civil-459/JAAD/images',}
+```
 
 ## Installation
+Clone this repository in order to use it.
+```
+# To clone the repository using HTTPS
+git clone ????????????????????????????
+cd ??????????????????/
+```
+
+All dependencies can be found in the `requirements.txt` file.
+```
+# To install dependencies
+pip install -r requirements.txt
+# To install torch with cuda
+pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 torchaudio==0.10.1 -f https://download.pytorch.org/whl/cu111/torch_stable.html
+```
+
+This project has been tested with Python 3.7.7, PyTorch 1.10.1, CUDA 11.1.
 
 ## Train
 
