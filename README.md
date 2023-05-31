@@ -70,7 +70,7 @@ all_image_dir = {'JAAD': '/work/scitas-share/datasets/Vita/civil-459/JAAD/images
 Clone this repository in order to use it.
 ```
 # To clone the repository using HTTPS
-git clone https://github.com/changchuntzu0618/Group9_PedestrianIntentionDetection.git
+git clone https://github.com/vita-student-projects/Group9_PedestrianIntentionDetection.git
 cd Group9_PedestrianIntentionDetection
 ```
 
