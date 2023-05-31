@@ -13,7 +13,7 @@ MEAN = [0.3104, 0.2813, 0.2973]
 STD = [0.1761, 0.1722, 0.1673]
 
 EMBEDDING_DIM = 256
-EVAL_MODES = ['cnn_only']
+EVAL_MODES = ['cnn_only', 'rnn_only']
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -42,9 +42,9 @@ def get_args():
     return args
 
 
-def build_loader(args, intent_seqs, TRANSFORM, image_dir):
-    ds = IntentionSequenceDataset(intent_seqs, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM)
-    loader = torch.utils.data.DataLoader(ds, batch_size=1, num_workers=4 ,shuffle=False)
+def build_loader(args, intent_seqs, TRANSFORM, image_dir, load_image=True):
+    ds = IntentionSequenceDataset(intent_seqs, image_dir=image_dir, hflip_p = 0, preprocess=TRANSFORM, load_image=load_image)
+    loader = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=False)
     return loader
 
     
@@ -79,6 +79,7 @@ def eval_rnn(loader, model, device):
 
     print_eval_metrics(tgts, preds, model['best_thr'])
 
+EVAL_FUNCTIONS = {'cnn_only': eval_cnn, 'rnn_only': eval_rnn}
 
 def main():
     args = get_args()
@@ -126,25 +127,29 @@ def main():
                 ]),
             ) 
         ])
+        load_image = True
     
     elif args.mode == 'rnn_only':
 
-        POS_VEL_DIM = 4
+        POS_VEL_DIM = 8
         rnn_classifier = RNNClassifier(input_size=POS_VEL_DIM, rnn_embeding_size=EMBEDDING_DIM, classification_head_size=128).to(device)
         model = {'decoder': rnn_classifier}
         TRANSFORM = None
+        load_image = False
 
     load_from_checkpoint(model, args.checkpoint_path)    
 
 
-    normal_loader = build_loader(args, normal_intent_sequences, TRANSFORM, image_dir_eval)
-    hard_loader = build_loader(args, hard_intent_sequences, TRANSFORM, image_dir_eval)
+    normal_loader = build_loader(args, normal_intent_sequences, TRANSFORM, image_dir_eval, load_image=load_image)
+    hard_loader = build_loader(args, hard_intent_sequences, TRANSFORM, image_dir_eval, load_image=load_image)
+
+    eval_function = EVAL_FUNCTIONS[args.mode]
 
     print(f'Normal test loader : {len(normal_loader)}, Hard (transition only) test loader : {len(hard_loader)}')
     print(f'Evaluation on full test set')
-    eval_cnn(normal_loader, model, device)
+    eval_function(normal_loader, model, device)
     print(f'Evaluation on transition only test set')
-    eval_cnn(hard_loader, model, device)
+    eval_function(hard_loader, model, device)
     
 
 if __name__ == '__main__':
