@@ -8,9 +8,10 @@ from src.utils import count_parameters, find_best_threshold, seed_torch, setup_w
 from src.model.models import RNNClassifier
 from src.dataset.utils import build_dataloaders
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
-from sklearn.metrics import classification_report, f1_score, average_precision_score
+from sklearn.metrics import  f1_score, average_precision_score
 import wandb
 from src.early_stopping import EarlyStopping, load_from_checkpoint
+from src.utils import log_metrics, prep_pred_storage, print_eval_metrics
 
 OUTPUT_DIM = 1
 INPUT_DIM = 8
@@ -74,6 +75,7 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
+    optimizer.zero_grad()
     epoch_loss /= n_steps
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
@@ -157,8 +159,8 @@ def main():
 
     # loading data
     train_loader, val_loader, test_loader = build_dataloaders(args, prepare_data, load_image=False)
-   
     # construct and load model  
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     rnn_classifier = RNNClassifier(input_size=INPUT_DIM, rnn_embeding_size=256, classification_head_size=128).to(device)
     model = {'decoder': rnn_classifier, 'best_thr': 0.5}
