@@ -8,8 +8,8 @@ from src.dataset.loader import IntentionSequenceDataset, define_path
 from src.transform.preprocess import ImageTransform, Compose, ResizeFrame, CropBoxWithBackgroud
 import torchvision
 from src.utils import count_parameters, find_best_threshold, seed_torch
-from src.model.models import build_encoder_res18,Res18Classifier
-from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, subsample_and_balance, unpack_batch
+from src.model.models import Res18Classifier
+from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score, precision_score, recall_score
 from pathlib import Path
 from torch.utils.data import DataLoader
@@ -193,8 +193,8 @@ def log_metrics(targets, preds, best_thr, best_f1, ap, mode, step):
 
 def prepare_data(anns_paths, image_dir, args, image_set):
     intent_sequences = build_pedb_dataset_jaad(anns_paths["JAAD"]["anns"], anns_paths["JAAD"]["split"], image_set=image_set, fps=args.fps, prediction_frames=args.pred, verbose=True)
-    balance = False if image_set == "test" else True
-    intent_sequences_cropped = subsample_and_balance(intent_sequences, max_frames=MAX_FRAMES, seed=args.seed, balance=balance)
+    if not image_set == "test":
+        intent_sequences = balance(intent_sequences, seed=args.seed)
 
     crop_with_background = CropBoxWithBackgroud(size=224)
     if image_set == 'train':
@@ -218,7 +218,7 @@ def prepare_data(anns_paths, image_dir, args, image_set):
                                  ]),
                              ) 
                             ])
-    ds = IntentionSequenceDataset(intent_sequences_cropped, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
+    ds = IntentionSequenceDataset(intent_sequences, image_dir=image_dir, hflip_p = 0.5, preprocess=TRANSFORM)
     return ds
 
 
@@ -256,7 +256,7 @@ def main():
     encoder_res18.freeze_backbone()
     encoder_res18.eval()
     print(f'Number of trainable parameters: encoder: {count_parameters(encoder_res18)}')
-    model = {'encoder': encoder_res18}
+    model = {'encoder': encoder_res18, 'best_thr': 0.5}
     # training settings
     criterion = torch.nn.BCELoss().to(device)
     cnn_params = list(encoder_res18.fc.parameters())

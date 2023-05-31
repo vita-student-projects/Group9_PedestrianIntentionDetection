@@ -227,3 +227,4 @@ def print_eval_metrics(tgts, preds, best_thr):
     preds = preds > best_thr
     print(f"Best threshold: {best_thr:.3f}, F1: {f1:.3f}, AP: {ap:.3f}")
     print(classification_report(tgts, preds))
+    return f1, ap
