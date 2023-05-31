@@ -2,7 +2,6 @@ import torch
 import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.ops import RoIAlign
 from .basenet import *
 from .baselines import *
 from ..utils import *
@@ -11,7 +10,6 @@ from ..utils import *
 class CNNEncoder(nn.Module):
     def __init__(self, activation='relu'):
         super().__init__()
-        self.threshold = 0.5
         self.activation = F.relu if activation == 'relu' else F.sigmoid
 
     def freeze_backbone(self,n_layer=None):
@@ -79,7 +77,6 @@ class Res18Classifier(CNNEncoder):
         )
 
 
-
 class MobilenetCropEncoder(CNNEncoder):
     def __init__(self, mobilenet, CNN_embed_dim=256, activation='relu'):
         super().__init__(activation=activation)
@@ -89,74 +86,6 @@ class MobilenetCropEncoder(CNNEncoder):
         self.backbone.classifier = torch.nn.Identity()
         self.fc = nn.Linear(in_features, CNN_embed_dim)
 
-                
-class Res18RoIEncoder(CNNEncoder):
-    """
-    CNN-encoder with ResNet-18 backbone
-    Input: a sequence of  RGB images Tx3xHxW (0<T<T_max)
-    Output: T_max x 1 x CNN_embed_dim feature vector
-    """
-    def __init__(self, resnet, CNN_embed_dim=256, activation='relu'):
-        super().__init__(activation=activation)
-        
-        self.backbone = resnet
-        self.fc = nn.Linear(1024, CNN_embed_dim)
-
-class Res18RoIEncoder_new(nn.Module):
-    """
-    CNN-encoder with ResNet-18 backbone
-    Input: a sequence of  RGB images Tx3xHxW (0<T<T_max)
-    Output: T_max x 1 x CNN_embed_dim feature vector
-    """
-    def __init__(self, resnet, CNN_embed_dim=256, activation='relu'):
-        super().__init__()
-        self.threshold = 0.5
-        self.activation = F.relu if activation == 'relu' else F.sigmoid
-        self.backbone = resnet
-        self.fc = nn.Linear(1024, CNN_embed_dim)
-
-    def freeze_backbone(self):
-        for child in self.backbone.children():
-            for para in child.parameters():
-                para.requires_grad = False
-
-    def turn_off_running_stats(self):
-        
-        def _turn_off_running_stats_recursive(module):    
-            if isinstance(module, torch.nn.BatchNorm2d):
-                module.track_running_stats = False
-                module.running_mean = None
-                module.running_var = None
-                return
-            for child in module.children():
-                _turn_off_running_stats_recursive(child)
-
-        _turn_off_running_stats_recursive(self.backbone)
-
-
-    def forward(self, x_5d, x_lengths,pv):
-        x_seq = []
-        batch_size = x_5d.size(0)
-        for i in range(batch_size):
-            cnn_embed_seq = []
-            for t in range(x_lengths[i]):
-                img = x_5d[i, t, :, :, :]
-                bb=pv[i,t,:]
-                x = self.backbone(torch.unsqueeze(img,dim=0),bb)  
-                x = self.fc(x)
-                x = self.activation(x)
-                x = x.view(x.size(0), -1) # flatten output of conv
-                cnn_embed_seq.append(x)                    
-            # swap time and sample dim such that (sample dim=1, time dim, CNN latent dim)
-            embed_seq = torch.stack(cnn_embed_seq, dim=0).transpose_(0, 1)
-            embed_seq = torch.squeeze(embed_seq, 1)
-            fea_dim = embed_seq.shape[-1]
-            embed_seq = embed_seq.view(-1,fea_dim)
-            x_seq.append(embed_seq)
-        
-        x_padded = nn.utils.rnn.pad_sequence(x_seq,batch_first=True, padding_value=0)
-        return x_padded
-    
 
 class RNNClassifier(nn.Module):
     def __init__(self, input_size, rnn_embeding_size=256, classification_head_size=128, drop_p=0.5, h_RNN_layers=1):
@@ -181,12 +110,66 @@ class RNNClassifier(nn.Module):
     def forward(self, input_seq, seq_lengths):  
         packed_inputs = torch.nn.utils.rnn.pack_padded_sequence(input_seq, seq_lengths, 
                                                                 batch_first=True, enforce_sorted=False)
-        # TODO: why?
         self.RNN.flatten_parameters()
         packed_RNN_out, _ = self.RNN(packed_inputs, None)
         RNN_out, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_RNN_out, batch_first=True)
         RNN_out = RNN_out[:, -1, :].contiguous()
         pred = self.classification_head(RNN_out).unsqueeze(-1)
+        return pred
+
+
+class CRNNClassifier(nn.Module):
+    def __init__(self, pos_vel_embedding_size, cnn_embedding_size, rnn_embeding_size=256, classification_head_size=128, drop_p=0.5, h_RNN_layers=1):
+        super().__init__()
+    
+        res18= torchvision.models.resnet18(pretrained=True)
+        res18.fc = torch.nn.Identity()
+        self.cnn_encoder = Res18CropEncoder(resnet=res18, CNN_embed_dim=cnn_embedding_size)
+
+        self.image_rnn = nn.LSTM(
+            input_size=cnn_embedding_size,
+            hidden_size=rnn_embeding_size,        
+            num_layers=h_RNN_layers,       
+            batch_first=True, 
+        )
+
+        self.position_rnn = nn.LSTM(
+            input_size=pos_vel_embedding_size,
+            hidden_size=rnn_embeding_size,
+            num_layers=h_RNN_layers,
+            batch_first=True,
+        )
+
+        self.classification_head = nn.Sequential(
+            nn.Linear(2 * rnn_embeding_size, classification_head_size),
+            nn.ReLU(),
+            nn.Dropout(p=drop_p),
+            nn.Linear(classification_head_size, 1),
+            nn.Sigmoid()
+        )
+
+    def from_pretrained(self, cnn_encoder_path, position_velocity_rnn_path):
+        self.cnn_encoder.load_state_dict(torch.load(cnn_encoder_path)['encoder_state_dict'])
+        self.position_rnn.load_state_dict(torch.load(position_velocity_rnn_path)['decoder_state_dict'])
+
+    def forward(self, image_seq, pos_vel_seq, seq_lengths):  
+        padded_image_inputs = self.cnn_encoder(image_seq, seq_lengths)
+
+        packed_image_inputs = torch.nn.utils.rnn.pack_padded_sequence(padded_image_inputs, seq_lengths, batch_first=True, enforce_sorted=False)
+        packed_pos_vel_inputs = torch.nn.utils.rnn.pack_padded_sequence(pos_vel_seq, seq_lengths, 
+                                                                batch_first=True, enforce_sorted=False)
+        
+        self.image_rnn.flatten_parameters()
+        self.position_rnn.flatten_parameters()
+
+        packed_image_rnn_out, _ = self.image_rnn(packed_image_inputs, None)
+        packed_pos_vel_rnn_out, _ = self.position_rnn(packed_pos_vel_inputs, None)
+
+        image_rnn_out, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_image_rnn_out, batch_first=True)
+        pos_vel_rnn_out, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_pos_vel_rnn_out, batch_first=True)
+
+        combined_out = torch.cat((image_rnn_out, pos_vel_rnn_out), dim=-1)[:, -1, :].contiguous()
+        pred = self.classification_head(combined_out)
         return pred
 
 
@@ -201,8 +184,6 @@ class DecoderRNN_IMBS(nn.Module):
         self.h_FC0_dim = h_FC0_dim
         self.h_FC1_dim = h_FC1_dim
         self.h_FC2_dim = h_FC2_dim
-
-        self.threshold = 0.5
     
         # image feature decoder
         self.RNN_0 = nn.LSTM(
