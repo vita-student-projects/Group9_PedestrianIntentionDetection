@@ -4,14 +4,13 @@ import time
 import torch
 import numpy as np
 from src.dataset.loader import IntentionSequenceDataset
-from src.utils import count_parameters, find_best_threshold, seed_torch, setup_wandb, log_metrics, prepare_cp_path, log_to_stdout
+from src.utils import count_parameters, find_best_threshold, seed_torch, setup_wandb, log_metrics, prepare_cp_path, log_to_stdout, prep_pred_storage, print_eval_metrics
 from src.model.models import RNNClassifier
 from src.dataset.utils import build_dataloaders
 from src.dataset.intention.jaad_dataset import build_pedb_dataset_jaad, balance, unpack_batch
 from sklearn.metrics import classification_report, f1_score, average_precision_score
 import wandb
 from src.early_stopping import EarlyStopping, load_from_checkpoint
-from src.utils import log_metrics, prep_pred_storage, print_eval_metrics
 
 OUTPUT_DIM = 1
 INPUT_DIM = 8
@@ -75,7 +74,6 @@ def train_epoch(loader, model, criterion, optimizer, device, epoch):
         loss.backward()
         optimizer.step()
 
-    optimizer.zero_grad()
     epoch_loss /= n_steps
     wandb.log({'train/loss': epoch_loss, 'train/epoch': epoch + 1}, commit=True)
     train_score = average_precision_score(tgts, preds)
@@ -111,7 +109,6 @@ def val_epoch(loader, model, criterion, device, epoch):
     wandb.log({'val/loss': epoch_loss, 'val/epoch': epoch + 1})
     best_thr, best_f1 = find_best_threshold(preds, tgts)
     model['best_thr'] = best_thr
-    best_f1 = f1_score(tgts, preds > best_thr)
 
     val_score = average_precision_score(tgts, preds)
     log_metrics(tgts, preds, best_thr, best_f1, val_score, 'val', epoch + 1)
@@ -160,8 +157,8 @@ def main():
 
     # loading data
     train_loader, val_loader, test_loader = build_dataloaders(args, prepare_data, load_image=False)
+   
     # construct and load model  
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     rnn_classifier = RNNClassifier(input_size=INPUT_DIM, rnn_embeding_size=256, classification_head_size=128).to(device)
     model = {'decoder': rnn_classifier, 'best_thr': 0.5}
